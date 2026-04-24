@@ -1,0 +1,49 @@
+{
+  "name": "techswifttrix-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TechSwiftTrix ERP System - Multi-tenant Enterprise Resource Platform",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n BACKEND,CEO,EXEC,CLVL,OPS,TECH,AGNT -c bgBlue.bold,cyan,blue,gray,green,indigo,orange \"npm run dev:backend\" \"npm run dev:ceo\" \"npm run dev:executive\" \"npm run dev:clevel\" \"npm run dev:operations\" \"npm run dev:technology\" \"npm run dev:agents\"",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:ceo": "npm run dev:ceo --workspace=frontend",
+    "dev:executive": "npm run dev:executive --workspace=frontend",
+    "dev:clevel": "npm run dev:clevel --workspace=frontend",
+    "dev:operations": "npm run dev:operations --workspace=frontend",
+    "dev:technology": "npm run dev:technology --workspace=frontend",
+    "dev:agents": "npm run dev:agents --workspace=frontend",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "concurrently": "^8.2.0",
+    "esbuild": "^0.18.20",
+    "eslint": "^8.45.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-react": "^7.33.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.1.6"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@redis/client": "^5.12.1",
+    "async": "^3.2.6",
+    "axios": "^1.15.1",
+    "bull": "^4.16.5",
+    "cron-parser": "^5.5.0",
+    "luxon": "^3.7.2",
+    "puppeteer": "^24.42.0"
+  }
+}
