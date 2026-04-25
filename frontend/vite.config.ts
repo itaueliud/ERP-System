@@ -5,12 +5,13 @@ import path from 'path';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
-  // CDN base URL for static assets in production (Req 37.6)
-  const cdnBase = env.VITE_CDN_BASE_URL ?? '';
+  // CDN asset hosting is opt-in for production deployments.
+  const cdnBase = (env.VITE_CDN_BASE_URL ?? '').trim();
+  const useCdn = env.VITE_USE_CDN === 'true';
 
   return {
-    // Use CDN base in production builds so all asset URLs are CDN-prefixed
-    base: mode === 'production' && cdnBase ? cdnBase : '/',
+    // Only prefix assets with CDN URL when explicitly enabled.
+    base: mode === 'production' && useCdn && cdnBase ? cdnBase : '/',
 
     plugins: [react()],
 
