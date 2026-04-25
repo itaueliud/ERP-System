@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from '../shared/utils/router';
 import { useAuth, getPortalForRole, ROLE_PORTAL_MAP } from '../shared/components/auth/AuthContext';
 import { PORTAL_THEMES } from '../shared/theme/portalThemes';
-import TSTLogo, { TSTEmblem } from '../../shared/components/TSTLogo';
+import TSTLogo, { TSTEmblem } from '../shared/components/TSTLogo';
 
 // Map portal path → theme id (spec §3 gateway URL naming)
 const PATH_THEME: Record<string, string> = {

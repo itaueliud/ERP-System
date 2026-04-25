@@ -1,1 +1,1 @@
-import TSTLogo, { TSTEmblem } from '../../shared/components/TSTLogo';
+﻿export default function RegisterPage() { return <div>Register Page</div>; }

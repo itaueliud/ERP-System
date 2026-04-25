@@ -44,6 +44,7 @@
     "bull": "^4.16.5",
     "cron-parser": "^5.5.0",
     "luxon": "^3.7.2",
-    "puppeteer": "^24.42.0"
+    "puppeteer": "^24.42.0",
+    "setimmediate": "^1.0.5"
   }
 }
