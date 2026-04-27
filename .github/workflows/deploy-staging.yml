@@ -7,7 +7,7 @@ on:
 
 env:
   STAGING_URL: https://staging.techswifttrix.com
-  NODE_VERSION: '18'
+  NODE_VERSION: '20'
 
 jobs:
   test-backend:
@@ -74,7 +74,7 @@ jobs:
         working-directory: backend
 
       - name: Build backend (TypeScript compile)
-        run: npx tsc
+        run: npm run build
         working-directory: backend
 
       - name: Upload backend build artifact
@@ -104,7 +104,7 @@ jobs:
         working-directory: frontend
 
       - name: Build frontend (Vite)
-        run: npx vite build
+        run: npm run build
         working-directory: frontend
         env:
           VITE_API_URL: ${{ env.STAGING_URL }}/api

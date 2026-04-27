@@ -19,7 +19,7 @@ env:
   PRODUCTION_URL: https://app.techswifttrix.com
   BLUE_URL: https://blue.techswifttrix.com
   GREEN_URL: https://green.techswifttrix.com
-  NODE_VERSION: '18'
+  NODE_VERSION: '20'
 
 jobs:
   # ─── Guard: skip normal deploy if rollback was requested ───────────────────
@@ -39,6 +39,38 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-rollback
     if: needs.check-rollback.outputs.is_rollback != 'true'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: techswifttrix_erp_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: techswifttrix_erp_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_SECRET: test_jwt_secret_ci
+      JWT_REFRESH_SECRET: test_refresh_secret_ci
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -95,13 +127,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Install backend dependencies
         run: npm ci
         working-directory: backend
 
       - name: Build backend (TypeScript compile)
-        run: npx tsc
+        run: npm run build
         working-directory: backend
 
       - name: Install frontend dependencies
@@ -109,7 +145,7 @@ jobs:
         working-directory: frontend
 
       - name: Build frontend (Vite)
-        run: npx vite build
+        run: npm run build
         working-directory: frontend
         env:
           VITE_API_URL: ${{ env.PRODUCTION_URL }}/api
