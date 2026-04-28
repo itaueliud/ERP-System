@@ -1,212 +1,288 @@
 TechSwiftTrix ERP System
+========================
 
-A multi-tenant Enterprise Resource Platform for managing clients, projects, payments, contracts, teams, agents, and reporting across an organisation.
+TechSwiftTrix is a full-stack, multi-portal Enterprise Resource Planning (ERP) platform built for managing complex organizational operations across departments, roles, clients, projects, payments, and real-time collaboration.
 
+---
 
-OVERVIEW
+Overview
+--------
 
-The system is split into two workspaces:
+The system is split into a Node.js/Express backend API and a React frontend with six independent role-based portals. It is designed to support a structured organization with 13 distinct roles and 6 departments, enforcing strict access control, audit logging, and compliance at every layer.
 
-  backend   — Express REST API (Node.js + TypeScript), runs on port 3000
-  frontend  — Six role-based React portals (Vite + TypeScript + Tailwind CSS)
+---
 
+Portals
+-------
 
-TECH STACK
+The frontend ships as six separate portals, each with its own Vite build config and entry point:
 
-  Backend:   Node.js 18+, Express, TypeScript, PostgreSQL, Redis, Socket.io, Bull (job queues), Winston
-  Frontend:  React 18, Redux Toolkit, React Router 6, Chart.js, Tailwind CSS, Vite
-  Auth:      JWT (8h access token, 7d refresh), GitHub OAuth (developers only), TOTP 2FA
-  Storage:   AWS S3 or Cloudflare R2
-  Email:     SendGrid
-  SMS:       Africa's Talking
-  Push:      Firebase Admin
-  PDF:       Puppeteer
-  Payments:  Daraja API (Safaricom M-Pesa)
+- CEO Portal
+- Executive Portal
+- C-Level Portal
+- Operations Portal
+- Technology Portal
+- Agents Portal
 
+Each portal exposes only the features and data relevant to its target role group.
 
-PREREQUISITES
+---
 
-  Node.js >= 18
-  npm >= 9
-  PostgreSQL
-  Redis
+Key Features
+------------
 
+Client Management
+  Lead lifecycle tracking from NEW_LEAD through CONVERTED, QUALIFIED, NEGOTIATION, and CLOSED_WON. Full communication history per client.
 
-SETUP
+Project Management
+  Project creation and status tracking with GitHub repository integration and service amount management.
 
-1. Install all dependencies from the root:
+Payments
+  M-Pesa (Daraja/Safaricom) integration with STK push, webhook handling, payment polling, developer team payments, staff payments, and approval workflows.
 
-     npm install
+Contracts
+  Contract generation with versioning, PDF templates, and digital signature support.
 
-2. Copy and fill in the backend environment file:
+Tasks and Daily Reports
+  Task assignment, daily accomplishment tracking, challenge logging, and team coordination.
 
-     cp backend/.env.example backend/.env
+Real-time Chat
+  WebSocket-based messaging (Socket.IO) with room types: DIRECT, GROUP, DEPARTMENT, and PROJECT. Supports file sharing.
 
-   Key variables to set:
+Training System
+  Course and module management, trainer verification, and agent training progress tracking.
 
-     DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
-     REDIS_HOST, REDIS_PORT
-     JWT_SECRET, JWT_REFRESH_SECRET
-     SENDGRID_API_KEY
-     AFRICAS_TALKING_USERNAME, AFRICAS_TALKING_API_KEY
-     FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL
-     AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET
-     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+Property Listings (PlotConnect)
+  Student residence and rental property management with placement tiers: Top, Medium, and Basic.
 
-3. Initialise and migrate the database:
+Audit and Compliance
+  Comprehensive audit logging across all actions, fraud detection, and compliance tracking.
 
-     npm run db:init --workspace=backend
-     npm run db:migrate --workspace=backend
+Reporting and Analytics
+  Daily reports, business analytics, and role-specific dashboard customization.
 
-4. Start everything:
+Notifications
+  Multi-channel delivery via email (SendGrid), SMS (Africa's Talking), and push (Firebase). Supports batch processing and user preferences.
 
-     npm run dev
+Backup and Disaster Recovery
+  Automated backups with configurable retention policies.
 
-   Or use the convenience script:
+---
 
-     ./start.sh
+Tech Stack
+----------
 
-   To start services individually:
+Backend
+  - Runtime: Node.js 18+
+  - Framework: Express.js
+  - Language: TypeScript
+  - Database: PostgreSQL 15+ (uuid-ossp, pgcrypto extensions)
+  - Cache / Sessions: Redis
+  - Job Queue: Bull
+  - Auth: JWT (access + refresh tokens), Passport.js (GitHub OAuth), TOTP 2FA (speakeasy)
+  - File Storage: AWS S3 or Cloudflare R2
+  - Error Tracking: Sentry
+  - Logging: Winston
+  - API Docs: Swagger / OpenAPI
+  - Testing: Jest, Supertest, fast-check (property-based)
 
-     npm run dev:backend
-     npm run dev:ceo
-     npm run dev:executive
-     npm run dev:clevel
-     npm run dev:operations
-     npm run dev:technology
-     npm run dev:agents
+Frontend
+  - Framework: React 18
+  - Language: TypeScript
+  - Build Tool: Vite (per-portal configs)
+  - State Management: Redux Toolkit
+  - Routing: React Router v6
+  - Styling: Tailwind CSS
+  - Real-time: Socket.IO client
+  - Charts: Chart.js + react-chartjs-2
+  - Maps: Leaflet
+  - Testing: Vitest, React Testing Library, fast-check
 
+---
 
-PORTALS AND URLS
+Authentication
+--------------
 
-  Portal       URL                          Intended Users
-  ---------    --------------------------   --------------------------------
-  CEO          http://localhost:5173        Chief Executive Officer
-  Executive    http://localhost:5174        CFO, CoS, EA
-  C-Level      http://localhost:5175        COO, CTO
-  Operations   http://localhost:5176        Operations team
-  Technology   http://localhost:5177        Tech leads, Developers
-  Agents       http://localhost:5178        Field agents, Sales reps
+Authentication is multi-layered:
 
-  Backend API  http://localhost:3000
-  Health check http://localhost:3000/health
-  Metrics      http://localhost:3000/metrics
+1. JWT — Access tokens (8h default) and refresh tokens (7d default) with separate signing secrets.
+2. GitHub OAuth — Passport.js integration for developer accounts.
+3. Two-Factor Authentication (2FA) — TOTP via speakeasy. Mandatory for CEO, CoS, CFO, and EA roles.
+4. Session Management — Redis-backed sessions with IP and user-agent tracking, timeout enforcement.
+5. Cookie Support — httpOnly auth_token cookies for enhanced security.
+6. Password Security — bcrypt hashing at 12 rounds, email-based password reset tokens.
 
+---
 
-DEFAULT LOGIN CREDENTIALS
+Roles and Departments
+---------------------
 
-  Production / CEO account (change password immediately after first login):
+Roles (13 total):
+  CEO, CoS, CFO, COO, CTO, EA, HEAD_OF_TRAINERS, TRAINER, AGENT,
+  OPERATIONS_USER, TECH_STAFF, DEVELOPER, CFO_ASSISTANT
 
-    Email:    ceo@techswifttrix.com
-    Password: Admin@TST2024!
-    Portal:   http://localhost:5173
+Account limits are enforced at the application level:
+  - CEO: 1 system-wide
+  - CoS: 1 system-wide
+  - CFO Assistants: 3 per CFO
 
-  Development seed accounts (for local use only — do not deploy to production):
+Departments (6 total, 3 under COO and 3 under CTO):
+  Under COO:
+    - Sales and Client Acquisition
+    - Client Success and Account Management
+    - Marketing and Business Operations
 
-    Role              Email                  Password           Portal
-    ---------------   --------------------   ----------------   -----
-    CEO               ceo@tst.com            Ceo@123456789!     :5173
-    CFO               cfo@tst.com            Cfo@123456789!     :5174
-    CoS               cos@tst.com            Cfo@123456789!     :5174
-    EA                ea@tst.com             Cfo@123456789!     :5174
-    COO               coo@tst.com            Coo@123456789!     :5175
-    CTO               cto@tst.com            Coo@123456789!     :5175
-    Operations        ops@tst.com            Ops@123456789!     :5176
-    Head of Trainers  headtrainer@tst.com    Ops@123456789!     :5176
-    Trainer           trainer@tst.com        Ops@123456789!     :5176
-    Technology        tech@tst.com           Tech@12345678!     :5177
-    Developer         dev@tst.com            Tech@12345678!     :5177
-    Agent             agent@tst.com          Agent@1234567!     :5178
+  Under CTO:
+    - Technology Infrastructure and Security
+    - Software Engineering and Product Development
+    - Engineering Operations and Delivery
 
-  Note: Developers authenticate via GitHub OAuth at http://localhost:5177.
-  The developer account (dev@tst.com) must have a matching GitHub email to log in.
+---
 
-  Note: CEO, CoS, CFO, and EA roles require 2FA (TOTP). In development mode
-  (NODE_ENV=development) 2FA enforcement is skipped so all roles can log in freely.
+Integrations
+------------
 
+- Daraja (Safaricom M-Pesa) — Mobile money payments
+- GitHub — OAuth and repository sync
+- Firebase — Push notifications
+- SendGrid — Transactional email
+- Africa's Talking — SMS delivery
+- AWS S3 / Cloudflare R2 — File storage with presigned URLs
+- Socket.IO — Real-time chat and notifications
+- Sentry — Error tracking and monitoring
 
-ROLES AND PERMISSIONS
+---
 
-  CEO              Full access to everything (wildcard permissions)
-  CoS              Users, clients, projects, payments, reports, audit, executive dashboard
-  CFO              Payment approval, financial reports, executive dashboard
-  COO              COO departments, clients, projects, operations reports, achievements
-  CTO              CTO departments, projects, GitHub integration, technology reports
-  EA               Payment execution, contracts, reports
-  HEAD_OF_TRAINERS Trainer management, training, reports
-  TRAINER          Agent read, training read/assign, reports
-  AGENT            Own clients, properties, daily reports
-  OPERATIONS_USER  Clients, properties, operations reports
-  TECH_STAFF  Projects read, GitHub read, technology reports
-  DEVELOPER        Projects read, full GitHub access, technology reports
-  CFO_ASSISTANT    Payment read/review/request, financial read, CFO chat
+Database
+--------
 
+PostgreSQL 15+ with the following design highlights:
 
-API
+- Chat messages, notifications, and audit logs are partitioned by month for performance at scale.
+- UUIDs used as primary keys throughout (gen_random_uuid).
+- Key tables: users, roles, departments, clients, projects, payments, contracts, tasks, training_courses, property_listings, chat_rooms, notifications, audit_logs, sessions.
 
-  Base URL:  http://localhost:3000/api/v1
-  Auth:      Bearer JWT token required on all routes except /api/v1/auth
+---
 
-  Main route groups:
-    /api/v1/auth
-    /api/v1/users
-    /api/v1/organization
-    /api/v1/clients
-    /api/v1/payments
-    /api/v1/contracts
-    /api/v1/projects
-    /api/v1/tasks
-    /api/v1/teams
-    /api/v1/properties
-    /api/v1/dashboard
-    /api/v1/reports
-    /api/v1/daily-reports
-    /api/v1/audit-logs
-    /api/v1/chat
-    /api/v1/notifications
-    /api/v1/training
-    /api/v1/trainer
-    /api/v1/agents
-    /api/v1/admin
-    /api/v1/pricing
+Getting Started
+---------------
 
+Prerequisites:
+  - Node.js 18+
+  - PostgreSQL 15+
+  - Redis
+  - (Optional) Docker
 
-DATABASE CLI
+Backend setup:
 
-  npm run db:init --workspace=backend          Initialise schema and seed data
-  npm run db:migrate --workspace=backend       Run pending migrations
-  npm run db:status --workspace=backend        Show migration status
-  npm run db:test --workspace=backend          Test database connection
-
-
-TESTING
-
-  npm run test                                 Run all tests
-  npm run test --workspace=backend             Backend tests only
-  npm run test --workspace=frontend            Frontend tests only
-
-
-BUILD
-
-  npm run build                                Build all workspaces
-  npm run build:ceo --workspace=frontend       Build a specific portal
-
-
-LINTING AND FORMATTING
-
-  npm run lint
-  npm run format
-
-
-LOGS
-
-  Runtime logs are written to backend/logs/app.log and backend/logs/error.log.
-  When using start.sh, per-service logs are written to /tmp/tst-*.log.
-  Log level is controlled by the LOG_LEVEL environment variable (default: debug in development).
-
-
-GRACEFUL SHUTDOWN
-
-  The server handles SIGTERM and SIGINT, closing the database pool and Redis
-  connection cleanly before exiting.
-# ERP-2-edited-copy
+  cd backend
+  cp .env.example .env.development
+  # Fill in required environment variables (see below)
+  npm install
+  npm run db:init
+  npm run dev
+
+Frontend setup:
+
+  cd frontend
+  npm install
+  npm run dev          # default portal
+  npm run dev:all      # all six portals concurrently
+
+Run all backend tests:
+
+  cd backend
+  npm test
+
+---
+
+Required Environment Variables
+-------------------------------
+
+The following variables must be set before starting the backend:
+
+  NODE_ENV
+  PORT
+  DB_HOST
+  DB_PORT
+  DB_NAME
+  DB_USER
+  DB_PASSWORD
+  REDIS_HOST
+  REDIS_PORT
+  JWT_SECRET
+  JWT_REFRESH_SECRET   (must differ from JWT_SECRET in production)
+
+See backend/.env.example for the full list including optional variables for S3, SendGrid, Firebase, Sentry, GitHub OAuth, and M-Pesa.
+
+---
+
+Docker
+------
+
+Separate Dockerfiles are provided for the backend and frontend:
+
+  Dockerfile.backend
+  Dockerfile.frontend
+
+The backend exposes a /health endpoint for container health checks and a /metrics endpoint for internal monitoring.
+
+---
+
+API Documentation
+-----------------
+
+Swagger UI is available at /api-docs when the backend is running.
+
+---
+
+Testing Strategy
+----------------
+
+- Unit tests — Jest with ts-jest
+- Integration tests — Supertest for API endpoints
+- Property-based tests — fast-check for invariant testing (encryption, pagination, CSV round-trips, config parsing, session timeouts, etc.)
+
+---
+
+Project Structure
+-----------------
+
+  backend/src/
+    admin/          Admin and pricing routes
+    agents/         Agent management
+    audit/          Audit logging and fraud detection
+    auth/           Authentication, 2FA, session management
+    backup/         Backup and retention services
+    bulk/           Bulk import and CSV operations
+    cache/          Redis cache services
+    chat/           Real-time chat (Socket.IO)
+    clients/        Client management and communications
+    commission/     Commission calculations
+    compliance/     Compliance tracking
+    config/         App configuration and environment loading
+    contracts/      Contract generation and versioning
+    dashboard/      Role-specific dashboards
+    database/       DB connection, schema, migrations, CLI
+    deployments/    Deployment tracking
+    incidents/      Incident management
+    marketer/       Marketer-specific routes
+    notifications/  Multi-channel notification delivery
+    organization/   Org structure management
+    payments/       Payment processing (M-Pesa, approvals)
+    projects/       Project management
+    properties/     PlotConnect property listings
+    realtime/       SSE routes
+    reports/        Reporting and daily reports
+    risks/          Risk management
+    tasks/          Task assignment and tracking
+    teams/          Team management
+    training/       Training courses and modules
+    users/          User management
+
+  frontend/src/
+    portals/        One folder per portal (ceo, executive, clevel, operations, technology, agents)
+    components/     Shared UI components
+    store/          Redux store and slices
+    hooks/          Shared React hooks
+    utils/          Shared utilities

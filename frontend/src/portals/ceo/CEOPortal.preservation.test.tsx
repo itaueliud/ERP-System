@@ -3,7 +3,6 @@
  * These tests MUST PASS both before and after fixes.
  * They confirm existing correct behaviors are preserved.
  */
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 

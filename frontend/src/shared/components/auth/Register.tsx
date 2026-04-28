@@ -14,12 +14,13 @@ export interface RegisterProps {
   isLoading?: boolean;
   error?: string;
   requiresPayout?: boolean;
+  defaultEmail?: string;
   presetPayout?: { payoutMethod?: string; payoutPhone?: string; payoutBankName?: string; payoutBankAccount?: string };
 }
 
-export function Register({ onSubmit, onLogin, isLoading, error, requiresPayout = false, presetPayout }: RegisterProps) {
+export function Register({ onSubmit, onLogin, isLoading, error, requiresPayout = false, defaultEmail = '', presetPayout }: RegisterProps) {
   const [name, setName]               = useState('');
-  const [email, setEmail]             = useState('');
+  const [email, setEmail]             = useState(defaultEmail);
   const [password, setPassword]       = useState('');
   const [confirm, setConfirm]         = useState('');
   const [payoutMethod, setPayoutMethod] = useState<'MPESA' | 'BANK'>((presetPayout?.payoutMethod as 'MPESA' | 'BANK') || 'MPESA');

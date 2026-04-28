@@ -3,7 +3,6 @@
  * React Query was removed; portals use useMultiPortalData instead.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { apiClient } from '../api/apiClient';
 
 export function useApi<T>(
   queryKey: unknown[],

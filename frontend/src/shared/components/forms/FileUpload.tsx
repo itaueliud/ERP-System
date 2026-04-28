@@ -1,4 +1,4 @@
-import React, { useRef, useState, DragEvent, ChangeEvent } from 'react';
+import { useRef, useState, DragEvent, ChangeEvent } from 'react';
 
 export interface FileUploadProps {
   label?: string;

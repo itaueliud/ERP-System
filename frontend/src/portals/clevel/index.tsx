@@ -75,6 +75,7 @@ function ChatSection({ token, currentUserId, portal }: { token: string; currentU
 }
 
 // ─── Shared: Notifications ────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function NotificationsSection({ notifs, refetch }: { notifs: any[]; refetch?: () => void }) {
   const [localNotifs, setLocalNotifs] = React.useState(notifs);
   React.useEffect(() => setLocalNotifs(notifs), [notifs]);
@@ -250,7 +251,7 @@ function COODashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
   const notifs = data.notifications || [];
   const clients = data.clients || [];
 
-  const unread = notifs.filter((n: any) => !n.read).length;
+  const _unread = notifs.filter((n: any) => !n.read).length;
   const nav = COO_NAV;
 
   const submitBudget = async (e: React.FormEvent) => {
@@ -376,7 +377,7 @@ function COODashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
               { key: 'amount', label: 'Amount', render: v => (v || 0).toLocaleString() },
               { key: 'department', label: 'Department' },
               { key: 'status', label: 'Status', render: v => <StatusBadge status={v || 'PENDING'} /> },
-              { key: 'id', label: 'Actions', render: (id, row: any) => (
+              { key: 'id', label: 'Actions', render: (_id, row: any) => (
                 <div className="flex gap-1.5">
                   <PortalButton size="sm" variant="secondary" onClick={() => alert(`Budget Request\n\nPurpose: ${row.purpose}\nAmount: KSh ${(row.amount || 0).toLocaleString()}\nDepartment: ${row.department || '—'}\nStatus: ${row.status || 'PENDING'}`)}>View</PortalButton>
                   {(row.status === 'PENDING' || !row.status) && (
@@ -753,7 +754,7 @@ function CTODashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
   const techRequests = data.techRequests || [];
   const notifs = data.notifications || [];
 
-  const unread = notifs.filter((n: any) => !n.read).length;
+  const _unread = notifs.filter((n: any) => !n.read).length;
   const nav = CTO_NAV;
 
   const ongoing   = projects.filter((p: any) => projectDisplayStatus(p) === 'ACTIVE').length;

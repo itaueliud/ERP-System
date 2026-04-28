@@ -187,6 +187,6 @@ SELECT 'dev@tst.com', '$2b$10$/SyTI26anhomvSmL9tRR0OhyuW77d3Kab9tzrI6tSbvCOA2Hmf
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO users (email, password_hash, full_name, phone, country, role_id)
-SELECT 'agent@tst.com', '$2b$10$PcKoJu9jDs1PVHg/Nmz7gOg6B/a0QpnlS6qkCiFfPQ7iUaMfXmcPi',
+SELECT 'agent@tst.com', '$2b$10$S5DOZft3bMaNGdsqZAjlh.QaFJ/cMXadUPkHiZi5Z6OFSejRwkEEi',
        'Agent User', '+254700000011', 'Kenya', r.id FROM roles r WHERE r.name = 'AGENT'
 ON CONFLICT (email) DO NOTHING;

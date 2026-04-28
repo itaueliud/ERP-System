@@ -226,19 +226,18 @@ export class ChatServer {
    */
   async handleMessageSend(
     socket: Socket,
-    data: { roomId: string; content: string; fileId?: string; fileSizeBytes?: number }
+    data: { roomId: string; content: string; fileId?: string; fileSizeBytes?: number; fileName?: string; mimeType?: string }
   ): Promise<void> {
     const userId: string = (socket as any).userId;
 
     try {
-      const { roomId, content, fileId, fileSizeBytes } = data;
+      const { roomId, content, fileId, fileSizeBytes, fileName, mimeType } = data;
 
       if (!roomId || !content) {
         socket.emit('message:error', { error: 'roomId and content are required' });
         return;
       }
 
-      // Validate file attachment size (Requirement 13.8)
       if (fileId && fileSizeBytes !== undefined && fileSizeBytes > MAX_FILE_SIZE_BYTES) {
         socket.emit('message:error', {
           error: `File size exceeds maximum allowed size of ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB`,
@@ -246,7 +245,7 @@ export class ChatServer {
         return;
       }
 
-      const message = await chatService.sendMessage(roomId, userId, content, fileId);
+      const message = await chatService.sendMessage(roomId, userId, content, fileId, fileName, mimeType);
 
       // Emit to all room members (Requirement 13.4: within 2 seconds)
       this.emitToRoom(roomId, 'message:new', message);

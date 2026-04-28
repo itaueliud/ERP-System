@@ -33,15 +33,30 @@ export interface BulkEmailMessage {
 }
 
 export class SendGridClient {
+  private readonly configured: boolean;
+
   constructor() {
+    if (!config.sendgrid.apiKey) {
+      logger.warn('SendGrid API key not configured — email sending disabled');
+      this.configured = false;
+      return;
+    }
     sgMail.setApiKey(config.sendgrid.apiKey);
+    this.configured = true;
     logger.info('SendGrid client initialized');
+  }
+
+  private assertConfigured(): void {
+    if (!this.configured) {
+      throw new Error('SendGrid is not configured — set SENDGRID_API_KEY to enable email sending');
+    }
   }
 
   /**
    * Send a single email
    */
   async sendEmail(message: EmailMessage): Promise<void> {
+    this.assertConfigured();
     try {
       const msg: any = {
         to: message.to,
@@ -73,6 +88,7 @@ export class SendGridClient {
    * Send multiple emails (bulk send)
    */
   async sendBulkEmails(message: BulkEmailMessage): Promise<void> {
+    this.assertConfigured();
     try {
       const msg: any = {
         personalizations: message.personalizations.map((p) => ({
@@ -112,6 +128,7 @@ export class SendGridClient {
     templateId: string,
     dynamicTemplateData: Record<string, any>
   ): Promise<void> {
+    this.assertConfigured();
     try {
       const msg = {
         to,

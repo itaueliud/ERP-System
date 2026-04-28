@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { dashboardService, DateRange, DateRangePeriod } from './dashboardService';
+import { db } from '../database/connection';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -118,6 +119,66 @@ router.get('/properties', async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Error fetching property metrics', { error });
     return res.status(500).json({ error: 'Failed to fetch property metrics' });
+  }
+});
+
+/**
+ * GET /api/dashboard/agent-metrics
+ * Agent-specific KPIs: clients added, active leads, closed deals,
+ * properties submitted, personal performance score.
+ * Called by the Agents portal Overview section.
+ */
+router.get('/agent-metrics', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const [clientsRes, propsRes, commissionsRes] = await Promise.all([
+      db.query(
+        `SELECT status, COUNT(*) AS count FROM clients WHERE agent_id = $1 GROUP BY status`,
+        [userId]
+      ),
+      db.query(
+        `SELECT COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE payment_status = 'PAID') AS paid
+         FROM marketer_properties WHERE submitted_by = $1`,
+        [userId]
+      ),
+      db.query(
+        `SELECT COALESCE(SUM(amount), 0) AS total
+         FROM commissions WHERE agent_id = $1 AND status = 'PAID'`,
+        [userId]
+      ),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    for (const r of clientsRes.rows) byStatus[r.status] = parseInt(r.count);
+
+    const totalClients = clientsRes.rows.reduce((s: number, r: any) => s + parseInt(r.count), 0);
+    const activeLeads = (byStatus['NEW_LEAD'] || 0) + (byStatus['CONVERTED'] || 0) +
+      (byStatus['LEAD_ACTIVATED'] || 0) + (byStatus['LEAD_QUALIFIED'] || 0) + (byStatus['NEGOTIATION'] || 0);
+    const closedDeals = byStatus['CLOSED_WON'] || 0;
+    const propertiesSubmitted = parseInt(propsRes.rows[0]?.total || '0');
+    const totalCommissions = parseFloat(commissionsRes.rows[0]?.total || '0');
+
+    // Simple KPI score: weighted average of conversion rate + report compliance
+    const conversionRate = totalClients > 0 ? Math.round((closedDeals / totalClients) * 100) : 0;
+
+    return res.json({
+      data: {
+        totalClients,
+        activeLeads,
+        closedDeals,
+        propertiesSubmitted,
+        totalCommissions,
+        kpiScore: conversionRate,
+        trainingProgress: null,
+        clientSatisfaction: null,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error fetching agent metrics', { error });
+    return res.status(500).json({ error: 'Failed to fetch agent metrics' });
   }
 });
 

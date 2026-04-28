@@ -65,8 +65,8 @@ export function useChatSocket({ token, portal, onMessage, onPresence, onDeleted 
     socketRef.current?.emit('room:leave', roomId);
   }, []);
 
-  const sendMessage = useCallback((roomId: string, content: string) => {
-    socketRef.current?.emit('message:send', { roomId, content });
+  const sendMessage = useCallback((roomId: string, content: string, fileId?: string, fileName?: string, mimeType?: string) => {
+    socketRef.current?.emit('message:send', { roomId, content, fileId, fileName, mimeType });
   }, []);
 
   return { connected, joinRoom, leaveRoom, sendMessage };

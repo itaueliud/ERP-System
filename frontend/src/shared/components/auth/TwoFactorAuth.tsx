@@ -1,4 +1,4 @@
-import React, { useState, FormEvent, useRef } from 'react';
+import { useState, FormEvent, useRef } from 'react';
 
 export interface TwoFactorAuthProps {
   onSubmit: (code: string) => void | Promise<void>;

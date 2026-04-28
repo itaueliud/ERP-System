@@ -10,7 +10,7 @@ import logger from '../utils/logger';
 
 const router = Router();
 
-router.get('/dashboard', requireRole(Role.TRAINER), async (req: Request, res: Response) => {
+router.get('/dashboard', requireRole(Role.TRAINER, Role.HEAD_OF_TRAINERS), async (req: Request, res: Response) => {
   try {
     const trainerId = (req as any).user.id;
     const data = await trainerService.getDashboard(trainerId);
@@ -33,6 +33,30 @@ router.get('/clients', requireRole(Role.TRAINER), async (req: Request, res: Resp
     return res.json({ success: true, ...result });
   } catch (error: any) {
     logger.error('Trainer get clients error', { error });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ── Agents assigned to this trainer ──────────────────────────────────────────
+router.get('/agents', requireRole(Role.TRAINER), async (req: Request, res: Response) => {
+  try {
+    const trainerId = (req as any).user.id;
+    const { db } = await import('../database/connection');
+    const result = await db.query(
+      `SELECT u.id, u.full_name AS name, u.email, u.phone, u.country, u.region,
+              u.created_at AS "assignedDate",
+              COUNT(c.id) AS "clientCount"
+       FROM users u
+       JOIN roles r ON r.id = u.role_id AND r.name = 'AGENT'
+       LEFT JOIN clients c ON c.agent_id = u.id
+       WHERE u.trainer_id = $1 AND u.is_active = TRUE
+       GROUP BY u.id, u.full_name, u.email, u.phone, u.country, u.region, u.created_at
+       ORDER BY u.full_name ASC`,
+      [trainerId]
+    );
+    return res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    logger.error('Trainer get agents error', { error });
     return res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -64,7 +88,7 @@ router.patch('/properties/:propertyId/placement-tier', requireRole(Role.TRAINER)
   }
 });
 
-router.get('/country-achievements', requireRole(Role.TRAINER), async (req: Request, res: Response) => {
+router.get('/country-achievements', requireRole(Role.TRAINER, Role.HEAD_OF_TRAINERS), async (req: Request, res: Response) => {
   try {
     const trainerId = (req as any).user.id;
     const data = await trainerService.getCountryAchievements(trainerId);

@@ -4,7 +4,7 @@ import { PortalLayout, StatCard, SectionHeader, DataTable, StatusBadge, PortalBu
 import { PORTAL_THEMES } from '../../shared/theme/portalThemes';
 import { useAuth } from '../../shared/components/auth/AuthContext';
 import { useMultiPortalData } from '../../shared/utils/usePortalData';
-import { AFRICAN_COUNTRIES, COUNTRIES_BY_REGION, AFRICAN_REGIONS, getCurrencyForCountry, COUNTRY_BY_NAME } from '../../shared/utils/africanCountries';
+import { AFRICAN_COUNTRIES, COUNTRIES_BY_REGION, AFRICAN_REGIONS, COUNTRY_BY_NAME } from '../../shared/utils/africanCountries';
 // Doc §3 Portal 4 (gatewaynexus): Same URL — RBA loads correct department dashboard
 // Roles: OPERATIONS_USER (Sales & CA), CLIENT_SUCCESS_USER, MARKETING_USER, HEAD_OF_TRAINERS, TRAINER
 import ClientSuccessDashboard from './ClientSuccessDashboard';
@@ -12,6 +12,7 @@ import MarketingDashboard from './MarketingDashboard';
 import TrainersPortal from '../trainers/index';
 import ChatPanel from '../../shared/components/chat/ChatPanel';
 import { OPERATIONS_FAQS } from '../../shared/data/portalFAQs';
+import PlotConnectProperties from '../../shared/components/plotconnect/PlotConnectProperties';
 
 const theme = PORTAL_THEMES.operations;
 
@@ -123,11 +124,11 @@ function exportToCSV(rows: any[], filename: string) {
 // Sales & Client Acquisition Department Dashboard (Portal 4 — OPERATIONS_USER / Sales Manager)
 export function SalesClientAcquisitionDashboard() {
   const [section, setSection] = useState('overview');
-  const [propTab, setPropTab] = useState<'list' | 'new'>('list');
-  const [propForm, setPropForm] = useState({ title: '', description: '', location: '', country: 'Kenya', price: '', currency: 'KES', propertyType: 'RESIDENTIAL', size: '' });
-  const [propSubmitting, setPropSubmitting] = useState(false);
-  const [propMsg, setPropMsg] = useState('');
-  const [propSuccess, setPropSuccess] = useState(false);
+
+
+
+
+
   const [showClientForm, setShowClientForm] = useState(false);
   const [clientForm, setClientForm] = useState({ name: '', email: '', phone: '', country: 'Kenya', industryCategory: '', estimatedValue: '', serviceDescription: '' });
   const [clientSubmitting, setClientSubmitting] = useState(false);
@@ -429,10 +430,13 @@ export function SalesClientAcquisitionDashboard() {
                     <span className="text-xs text-gray-500">{lead.estimatedValue ? `KSh ${Number(lead.estimatedValue).toLocaleString()}` : '—'}</span>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <PortalButton size="sm" color={theme.hex}
-                      onClick={() => { setActiveAction((a: any) => a?.clientId === lead.id && a.type === 'qualify' ? null : { type: 'qualify', clientId: lead.id }); setActionMsg(''); }}>
-                      Qualify
-                    </PortalButton>
+                    {/* Hide Qualify once estimatedValue is set, or status is past qualification */}
+                    {!lead.estimatedValue && !['NEGOTIATION', 'CLOSED_WON'].includes(lead.status) && (
+                      <PortalButton size="sm" color={theme.hex}
+                        onClick={() => { setActiveAction((a: any) => a?.clientId === lead.id && a.type === 'qualify' ? null : { type: 'qualify', clientId: lead.id }); setActionMsg(''); }}>
+                        Qualify
+                      </PortalButton>
+                    )}
                     {(lead.status === 'QUALIFIED_LEAD' || lead.status === 'LEAD_QUALIFIED') && (
                       <PortalButton size="sm" variant="secondary"
                         onClick={() => { setActiveAction((a: any) => a?.clientId === lead.id && a.type === 'convert' ? null : { type: 'convert', clientId: lead.id }); setActionMsg(''); }}>
@@ -463,6 +467,7 @@ export function SalesClientAcquisitionDashboard() {
                         setActionMsg('Lead qualified successfully!');
                         setActiveAction(null);
                         setQualifyForm({ estimatedValue: '', priority: 'MEDIUM' });
+                        refetch(['leads', 'clients']);
                       } catch (err: any) {
                         setActionSuccess(false);
                         setActionMsg(err?.response?.data?.error || 'Failed to qualify lead');
@@ -486,7 +491,7 @@ export function SalesClientAcquisitionDashboard() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <PortalButton color={theme.hex} disabled={actionSubmitting}>
+                        <PortalButton type="submit" color={theme.hex} disabled={actionSubmitting}>
                           {actionSubmitting ? 'Saving…' : 'Confirm Qualify'}
                         </PortalButton>
                         <PortalButton variant="secondary" onClick={() => setActiveAction(null)}>Cancel</PortalButton>
@@ -560,7 +565,7 @@ export function SalesClientAcquisitionDashboard() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <PortalButton color={theme.hex} disabled={actionSubmitting}>
+                        <PortalButton type="submit" color={theme.hex} disabled={actionSubmitting}>
                           {actionSubmitting ? 'Converting…' : 'Confirm Convert'}
                         </PortalButton>
                         <PortalButton variant="secondary" onClick={() => setActiveAction(null)}>Cancel</PortalButton>
@@ -602,126 +607,12 @@ export function SalesClientAcquisitionDashboard() {
       )}
 
       {section === 'properties' && (
-        <div>
-          <SectionHeader title="Property Listings" subtitle="Available and sold properties"
-            action={<PortalButton color={theme.hex} onClick={() => setPropTab('new')}>Add Property</PortalButton>} />
-          <div className="flex gap-2 mb-4">
-            {(['list', 'new'] as const).map(t => (
-              <button key={t} onClick={() => setPropTab(t)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${propTab === t ? 'text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                style={propTab === t ? { backgroundColor: theme.hex } : {}}>
-                {t === 'list' ? 'List' : 'New Property'}
-              </button>
-            ))}
-          </div>
-          {propTab === 'list' && (
-            <DataTable
-              columns={[
-                { key: 'title', label: 'Property', render: (v: any) => v || '—' },
-                { key: 'location',      label: 'Location' },
-                { key: 'property_type', label: 'Type',     render: (v, r: any) => v || r.propertyType || '—' },
-                { key: 'price_per_room', label: 'Price/Room (KSh)', render: (v, r: any) => (v || r.price) ? Number(v || r.price).toLocaleString() : '—' },
-                { key: 'status',        label: 'Status',   render: (v) => <StatusBadge status={v || 'AVAILABLE'} /> },
-              ]}
-              rows={Array.isArray(properties) ? properties : []}
-              emptyMessage="No properties listed yet"
-            />
-          )}
-          {propTab === 'new' && (
-            <div className="max-w-2xl bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
-              {propMsg && (
-                <div className={`p-3 rounded-xl text-sm mb-4 ${propSuccess ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  {propMsg}
-                </div>
-              )}
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                setPropSubmitting(true);
-                setPropMsg('');
-                try {
-                  const { apiClient } = await import('../../shared/api/apiClient');
-                  await apiClient.post('/api/v1/properties', {
-                    title: propForm.title,
-                    description: propForm.description,
-                    location: propForm.location,
-                    country: propForm.country,
-                    price: parseFloat(propForm.price),
-                    currency: propForm.currency,
-                    propertyType: propForm.propertyType,
-                    size: propForm.size ? parseFloat(propForm.size) : 0,
-                  });
-                  setPropSuccess(true);
-                  setPropMsg('Property created successfully!');
-                  setPropForm({ title: '', description: '', location: '', country: 'Kenya', price: '', currency: 'KES', propertyType: 'RESIDENTIAL', size: '' });
-                  setPropTab('list');
-                  refetch(['properties']);
-                } catch (err: any) {
-                  setPropSuccess(false);
-                  setPropMsg(err?.response?.data?.error || 'Failed to create property');
-                } finally {
-                  setPropSubmitting(false);
-                }
-              }}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                  <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Title *</label>
-                    <input type="text" required value={propForm.title} onChange={e => setPropForm(f => ({ ...f, title: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Description *</label>
-                    <textarea rows={3} required value={propForm.description} onChange={e => setPropForm(f => ({ ...f, description: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all resize-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Location *</label>
-                    <input type="text" required value={propForm.location} onChange={e => setPropForm(f => ({ ...f, location: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Country *</label>
-                    <select required value={propForm.country}
-                      onChange={e => setPropForm(f => ({ ...f, country: e.target.value, currency: getCurrencyForCountry(e.target.value) }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all">
-                      {AFRICAN_REGIONS.map(region => (
-                        <optgroup key={region} label={region}>
-                          {COUNTRIES_BY_REGION[region].map(c => (
-                            <option key={c.code} value={c.name}>{c.name}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Price *</label>
-                    <input type="number" required min={0.01} step="0.01" value={propForm.price} onChange={e => setPropForm(f => ({ ...f, price: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Currency (auto from country)</label>
-                    <input type="text" readOnly value={propForm.currency}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-sm text-gray-500" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Property Type *</label>
-                    <select required value={propForm.propertyType} onChange={e => setPropForm(f => ({ ...f, propertyType: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all">
-                      {['LAND', 'RESIDENTIAL', 'COMMERCIAL', 'INDUSTRIAL', 'AGRICULTURAL'].map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Size (sq m)</label>
-                    <input type="number" min={0} value={propForm.size} onChange={e => setPropForm(f => ({ ...f, size: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 transition-all" />
-                  </div>
-                </div>
-                <PortalButton color={theme.hex} fullWidth disabled={propSubmitting}>
-                  {propSubmitting ? 'Creating…' : 'Create Property'}
-                </PortalButton>
-              </form>
-            </div>
-          )}
-        </div>
+        <PlotConnectProperties
+          themeHex={theme.hex}
+          canApprove={true}
+          showAgent={true}
+          showRevenue={false}
+        />
       )}
       {section === 'tasks' && (
         <div>

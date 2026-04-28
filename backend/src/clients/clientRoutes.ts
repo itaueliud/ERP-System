@@ -36,6 +36,18 @@ router.post('/', async (req: Request, res: Response) => {
       resolvedCountry = agentRow.rows[0]?.country || 'Kenya';
     }
 
+    // Duplicate check — same agent, same email + phone
+    const { db } = await import('../database/connection');
+    const existing = await db.query(
+      `SELECT id, name FROM clients WHERE agent_id = $1 AND lower(email) = lower($2) AND phone = $3 LIMIT 1`,
+      [agentId, email, phone]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({
+        error: `Client already registered. A client with this email and phone number already exists (${existing.rows[0].name}).`,
+      });
+    }
+
     const clientInput: CreateClientInput = {
       name,
       email,
@@ -52,6 +64,10 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(201).json(client);
   } catch (error: any) {
     logger.error('Error creating client', { error, body: req.body });
+    // Handle unique constraint violation from DB
+    if (error.code === '23505' && error.constraint === 'uq_clients_agent_email_phone') {
+      return res.status(409).json({ error: 'Client already registered with this email and phone number.' });
+    }
     return res.status(400).json({ error: error.message || 'Failed to create client' });
   }
 });
@@ -63,11 +79,31 @@ router.post('/', async (req: Request, res: Response) => {
 router.get('/all', async (req: Request, res: Response) => {
   try {
     const role = (req as any).user?.role;
-    const allowed = ['CEO', 'CoS', 'CFO', 'COO', 'CTO', 'EA', 'CFO_ASSISTANT', 'OPERATIONS_USER', 'HEAD_OF_TRAINERS'];
+    const userId = (req as any).user?.id;
+    const allowed = ['CEO', 'CoS', 'CFO', 'COO', 'CTO', 'EA', 'CFO_ASSISTANT', 'OPERATIONS_USER', 'HEAD_OF_TRAINERS', 'TRAINER'];
     if (!allowed.includes(role)) {
       return res.status(403).json({ error: 'Access denied' });
     }
     const { search, limit, offset } = req.query;
+
+    // Trainers only see clients assigned to them
+    if (role === 'TRAINER') {
+      const { db } = await import('../database/connection');
+      const result = await db.query(
+        `SELECT c.id, c.reference_number, c.name, c.email, c.phone, c.country,
+                c.industry_category, c.service_description, c.status, c.agent_id,
+                c.trainer_id, c.estimated_value, c.priority, c.expected_start_date,
+                c.created_at, c.updated_at,
+                u.full_name AS agent_name
+         FROM clients c
+         LEFT JOIN users u ON u.id = c.agent_id
+         WHERE c.trainer_id = $1
+         ORDER BY c.updated_at DESC`,
+        [userId]
+      );
+      return res.json({ clients: result.rows, total: result.rows.length });
+    }
+
     const result = await clientService.listAllClients({
       search: search as string | undefined,
       limit: limit ? parseInt(limit as string) : undefined,
@@ -292,16 +328,16 @@ router.post('/:id/qualify', async (req: Request, res: Response) => {
     const { estimatedValue, priority, expectedStartDate } = req.body;
 
     // Validate required fields
-    if (!estimatedValue || !priority || !expectedStartDate) {
+    if (!estimatedValue || !priority) {
       return res.status(400).json({
-        error: 'Missing required fields: estimatedValue, priority, expectedStartDate',
+        error: 'Missing required fields: estimatedValue, priority',
       });
     }
 
     const qualificationData = {
       estimatedValue: parseFloat(estimatedValue),
       priority,
-      expectedStartDate: new Date(expectedStartDate),
+      expectedStartDate: expectedStartDate ? new Date(expectedStartDate) : new Date(),
     };
 
     const client = await clientService.qualifyLeadWithData(id, qualificationData);

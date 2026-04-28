@@ -45,6 +45,8 @@ export const DEFAULT_CHANNELS: Record<NotificationType, DeliveryChannel[]> = {
   [NotificationType.DAILY_REPORT_OVERDUE]:         [DeliveryChannel.EMAIL],
   [NotificationType.GITHUB_COMMIT_PR]:             [DeliveryChannel.PUSH],
   [NotificationType.NEW_USER_INVITED]:             [DeliveryChannel.EMAIL],
+  [NotificationType.SECURITY_ALERT]:               [DeliveryChannel.PUSH],
+  [NotificationType.SYSTEM_ALERT]:                 [DeliveryChannel.PUSH],
 };
 
 // ─── Service ──────────────────────────────────────────────────────────────────

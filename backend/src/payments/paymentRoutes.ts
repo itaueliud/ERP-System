@@ -7,7 +7,6 @@ import { db } from '../database/connection';
 import { darajaClient } from '../services/daraja';
 import { config } from '../config';
 import logger from '../utils/logger';
-
 const router = Router();
 
 // ── Sandbox Endpoints ─────────────────────────────────────────────────────────
@@ -89,48 +88,25 @@ router.post('/sandbox/simulate-webhook', async (req: Request, res: Response) => 
 
 /**
  * POST /api/payments/webhook
- * Handle Daraja API webhook callbacks (STK Push & B2C results)
- * Requirements: 5.11, 5.12
- *
- * Receives payment status updates from Safaricom Daraja API.
- * Verifies the webhook signature using HMAC-SHA256 and processes
- * payment status updates (PENDING, COMPLETED, FAILED, REFUNDED).
+ * @deprecated — webhook is now handled exclusively by webhookRouter.ts
+ * mounted at /api/payments (public). This stub is kept to avoid 404s
+ * if any old reference calls /api/v1/payments/webhook.
  */
 router.post('/webhook', async (req: Request, res: Response) => {
+  // Delegate to the shared handler via paymentService
   try {
     const payload = req.body;
-
-    // Validate payload structure
     if (!payload || (!payload.Body && !payload.transactionId)) {
-      logger.error('Invalid webhook payload structure', { payload });
       return res.status(400).json({ error: 'Invalid webhook payload' });
     }
-
-    // Signature check — only enforce when a webhook secret is configured AND
-    // the caller actually sends the header. Safaricom's own callbacks do NOT
-    // send x-daraja-signature, so we skip it for real Daraja callbacks.
     const signature = (req.headers['x-daraja-signature'] || '') as string;
-    if (signature) {
-      try {
-        await paymentService.handleWebhook(signature, payload);
-      } catch (error: any) {
-        if (error.message === 'Invalid webhook signature') {
-          logger.error('SECURITY ALERT: Invalid webhook signature detected', {
-            signature, payload, ip: req.ip, userAgent: req.headers['user-agent'],
-          });
-          return res.status(401).json({ error: 'Invalid webhook signature' });
-        }
-        throw error;
-      }
-    } else {
-      // No signature header — real Daraja callback, process directly
-      await paymentService.handleWebhook('', payload);
-    }
-
-    logger.info('Webhook processed successfully', { payload });
-    return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+    await paymentService.handleWebhook(signature, payload);
+    return res.status(200).json({ success: true });
   } catch (error: any) {
-    logger.error('Webhook processing error', { error, body: req.body, headers: req.headers });
+    if (error.message === 'Invalid webhook signature') {
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+    logger.error('Webhook error (v1 route)', { error: error.message });
     return res.status(500).json({ error: 'Failed to process webhook' });
   }
 });
@@ -175,27 +151,110 @@ router.get('/:transactionId', async (req: Request, res: Response) => {
  * POST /api/payments/mpesa
  * Initiate M-Pesa STK Push payment
  * Requirements: 5.2, 5.6
+ *
+ * In sandbox auto-complete mode (DARAJA_SANDBOX_AUTO_COMPLETE=true), skips the
+ * real STK push and immediately records the payment as COMPLETED — useful for
+ * testing the full payment flow without a real phone or real money.
  */
 router.post('/mpesa', async (req: Request, res: Response) => {
   try {
-    const { phoneNumber, amount, currency, reference, description, clientId, projectId } = req.body;
+    const { phoneNumber, amount, currency, reference, description, clientId, projectId, propertyId } = req.body;
 
-    // Validate required fields
     if (!phoneNumber || !amount || !currency || !reference) {
       return res.status(400).json({
         error: 'Missing required fields: phoneNumber, amount, currency, reference',
       });
     }
 
+    const parsedAmount = parseFloat(amount);
+    if (!isFinite(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'amount must be a positive finite number' });
+    }
+
+    // ── Sandbox auto-complete ─────────────────────────────────────────────────
+    // When DARAJA_SANDBOX_AUTO_COMPLETE=true, skip the real STK push and
+    // immediately mark the payment as COMPLETED so the full flow can be tested.
+    if (config.daraja.sandboxMode && process.env.DARAJA_SANDBOX_AUTO_COMPLETE === 'true') {
+      const fakeCheckoutId = `SANDBOX-AUTO-${Date.now()}`;
+      logger.info('[SANDBOX AUTO-COMPLETE] Skipping real STK push, marking payment COMPLETED', {
+        phoneNumber, amount: parsedAmount, reference, propertyId,
+      });
+
+      // Record the payment as already completed
+      const result = await db.query(
+        `INSERT INTO payments
+           (transaction_id, checkout_request_id, amount, currency, payment_method,
+            status, client_id, project_id, property_id)
+         VALUES ($1, $1, $2, $3, 'MPESA', 'COMPLETED', $4, $5, $6)
+         RETURNING id, transaction_id, amount, currency, payment_method, status, created_at`,
+        [fakeCheckoutId, parsedAmount, currency,
+         clientId || null, projectId || null, propertyId || null]
+      );
+
+      // Immediately update marketer_properties if linked
+      if (propertyId) {
+        await db.query(
+          `UPDATE marketer_properties
+           SET payment_status = 'PAID',
+               payment_confirmed_at = NOW(),
+               checkout_request_id = $2,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [propertyId, fakeCheckoutId]
+        ).catch(() => {});
+        await db.query(
+          `UPDATE marketer_properties SET status = 'PUBLISHED', updated_at = NOW()
+           WHERE id = $1 AND status = 'APPROVED'`,
+          [propertyId]
+        ).catch(() => {});
+      }
+
+      // Activate/qualify the client lead if linked
+      if (clientId) {
+        try {
+          const { clientService } = await import('../clients/clientService');
+          // Determine payment plan from the payments record or default to FULL
+          const planRow = await db.query(
+            `SELECT payment_plan FROM clients WHERE id = $1`, [clientId]
+          ).catch(() => ({ rows: [] }));
+          const paymentPlan = planRow.rows[0]?.payment_plan || 'FULL';
+          // Walk the status chain: NEW_LEAD → CONVERTED → LEAD_ACTIVATED/LEAD_QUALIFIED
+          await clientService.markConverted(clientId).catch(() => {});
+          if (paymentPlan === 'FULL') {
+            await clientService.activateLead(clientId, fakeCheckoutId);
+          } else {
+            await clientService.qualifyLead(clientId, fakeCheckoutId);
+          }
+          logger.info('[SANDBOX AUTO-COMPLETE] Client lead status updated', { clientId, paymentPlan });
+        } catch (err: any) {
+          logger.warn('[SANDBOX AUTO-COMPLETE] Could not update client lead status', { clientId, err: err.message });
+        }
+      }
+
+      const row = result.rows[0];
+      return res.status(201).json({
+        id: row.id,
+        transactionId: row.transaction_id,
+        status: 'COMPLETED',
+        amount: parseFloat(row.amount),
+        currency: row.currency,
+        sandbox: true,
+        autoCompleted: true,
+        message: '[SANDBOX] Payment auto-completed — no real money charged.',
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const payment = await paymentService.initiateMpesaPayment({
       phoneNumber,
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       currency,
       reference,
       description,
       clientId,
       projectId,
-    });
+      propertyId,
+    } as any);
 
     return res.status(201).json(payment);
   } catch (error: any) {
@@ -318,7 +377,8 @@ router.post('/card', async (req: Request, res: Response) => {
 
     return res.status(201).json(payment);
   } catch (error: any) {
-    logger.error('Error initiating card payment', { error, body: req.body });
+    // Never log req.body here — it contains card details (PCI-DSS)
+    logger.error('Error initiating card payment', { error: error.message });
     return res.status(400).json({
       error: error.message || 'Failed to initiate card payment',
     });
@@ -403,7 +463,7 @@ router.post('/approvals', requireRole(
  * Get pending approvals (for CFO dashboard)
  * Requirements: 7.2, 7.10
  */
-router.get('/approvals/pending', async (_req: Request, res: Response) => {
+router.get('/approvals/pending', requireRole(Role.CFO, Role.CoS, Role.CEO, Role.EA), async (_req: Request, res: Response) => {
   try {
     const approvals = await paymentService.getPendingApprovals();
     return res.json(approvals);
@@ -420,7 +480,7 @@ router.get('/approvals/pending', async (_req: Request, res: Response) => {
  * Get approved pending execution (for EA dashboard)
  * Requirements: 7.5, 7.10
  */
-router.get('/approvals/approved-pending-execution', async (_req: Request, res: Response) => {
+router.get('/approvals/approved-pending-execution', requireRole(Role.CFO, Role.CoS, Role.CEO, Role.EA), async (_req: Request, res: Response) => {
   try {
     const approvals = await paymentService.getApprovedPendingExecution();
     return res.json(approvals);
@@ -437,7 +497,7 @@ router.get('/approvals/approved-pending-execution', async (_req: Request, res: R
  * Get overdue approvals (pending for more than 48 hours)
  * Requirements: 7.8
  */
-router.get('/approvals/overdue', async (_req: Request, res: Response) => {
+router.get('/approvals/overdue', requireRole(Role.CFO, Role.CoS, Role.CEO, Role.EA), async (_req: Request, res: Response) => {
   try {
     const approvals = await paymentService.getOverdueApprovals();
     return res.json(approvals);
@@ -453,7 +513,7 @@ router.get('/approvals/overdue', async (_req: Request, res: Response) => {
  * GET /api/payments/approvals/:approvalId
  * Get payment approval by ID
  */
-router.get('/approvals/:approvalId', async (req: Request, res: Response) => {
+router.get('/approvals/:approvalId', requireRole(Role.CFO, Role.CoS, Role.CEO, Role.EA, Role.COO, Role.CTO, Role.HEAD_OF_TRAINERS, Role.OPERATIONS_USER, Role.TECH_STAFF, Role.CFO_ASSISTANT), async (req: Request, res: Response) => {
   try {
     const { approvalId } = req.params;
 

@@ -8,6 +8,7 @@ import { useMultiPortalData } from '../../shared/utils/usePortalData';
 import { ContractGeneratorForm } from '../../shared/components/contracts/ContractGeneratorForm';
 import ChatPanel from '../../shared/components/chat/ChatPanel';
 import { EXECUTIVE_FAQS } from '../../shared/data/portalFAQs';
+import PlotConnectProperties from '../../shared/components/plotconnect/PlotConnectProperties';
 import { SandboxBanner } from '../../shared/components/payments/SandboxBanner';
 
 const theme = PORTAL_THEMES.executive;
@@ -169,6 +170,7 @@ function ChatSection({ token, currentUserId, portal }: { token: string; currentU
 }
 
 // ─── Shared: Notifications ────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function NotificationsSection({ notifs, refetch }: { notifs: any[]; refetch?: () => void }) {
   const [localNotifs, setLocalNotifs] = React.useState(notifs);
   React.useEffect(() => setLocalNotifs(notifs), [notifs]);
@@ -665,9 +667,11 @@ function CFODashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
 
   const nav = CFO_NAV.map(n => n.id === 'notifications' ? { ...n, badge: notifs.filter((x: any) => !x.read).length } : n);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const approvePayment = async (id: string) => {
     try { const { apiClient } = await import('../../shared/api/apiClient'); await apiClient.post(`/api/v1/payments/approvals/${id}/approve`, {}); refetch(['payments']); } catch { /* silent */ }
   };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const rejectPayment = async (id: string) => {
     const reason = prompt('Rejection reason:'); if (!reason) return;
     try { const { apiClient } = await import('../../shared/api/apiClient'); await apiClient.post(`/api/v1/payments/approvals/${id}/reject`, { reason }); refetch(['payments']); } catch { /* silent */ }
@@ -1106,7 +1110,7 @@ function CoSDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
   const techRequests = data.techRequests || [];
   const plData = data.plData || [];
   const taxReports = data.taxReports || [];
-  const cashFlow = data.cashFlow || [];
+  const cashFlow = data.cashFlow || []; void cashFlow;
   const pending = (data.payments || []).filter((p: any) => p.status === 'PENDING_APPROVAL' || p.status === 'PENDING');
   const approvedPayments = data.approvedPayments || [];
   // Escalation state
@@ -1384,10 +1388,404 @@ function CoSDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
 }
 
 
+// ─── Image Uploader ───────────────────────────────────────────────────────────
+function ImageUploader({ propertyId, onUploaded }: {
+  propertyId: string;
+  onUploaded: (imgs: { id: string; url: string }[]) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg,  setMsg]  = useState('');
+
+  const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).slice(0, 8);
+    if (!files.length) return;
+    setBusy(true); setMsg('');
+    try {
+      const { apiClient } = await import('../../shared/api/apiClient');
+      const fd = new FormData();
+      for (const f of files) fd.append('images', f, f.name);
+      const res = await apiClient.post(
+        `/api/v1/plotconnect/properties/${propertyId}/images`, fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      const uploaded = (res.data as any)?.images || [];
+      onUploaded(uploaded);
+      setMsg(`✓ ${uploaded.length} image${uploaded.length !== 1 ? 's' : ''} uploaded.`);
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || 'Upload failed.');
+    } finally {
+      setBusy(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-xs font-medium text-slate-600 cursor-pointer hover:bg-slate-50 transition-colors ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        {busy ? 'Uploading…' : 'Upload Images (up to 8)'}
+        <input type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} disabled={busy} />
+      </label>
+      {msg && (
+        <p className={`text-xs mt-1.5 ${msg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{msg}</p>
+      )}
+    </div>
+  );
+}
+
+// ─── PlotConnect Property Review ─────────────────────────────────────────────
+function PlotConnectReview({ properties, onRefetch }: { properties: any[]; onRefetch: () => void }) {
+  const [busy,      setBusy]      = useState<string | null>(null);
+  const [msg,       setMsg]       = useState('');
+  const [editProp,  setEditProp]  = useState<any | null>(null);
+  const [editForm,  setEditForm]  = useState<any>({});
+  const [editBusy,  setEditBusy]  = useState(false);
+  const [editMsg,   setEditMsg]   = useState('');
+  const [upgradePkg,   setUpgradePkg]   = useState('STANDARD');
+  const [upgradePhone, setUpgradePhone] = useState('');
+  const [upgradeBusy,  setUpgradeBusy]  = useState(false);
+  const [upgradeMsg,   setUpgradeMsg]   = useState('');
+  const [viewImages,   setViewImages]   = useState<{ id: string; url: string }[]>([]);
+  const [viewImgIdx,   setViewImgIdx]   = useState(0);
+  const PRICES: Record<string, number> = { BASIC: 4000, STANDARD: 8000, ADVANCED: 12000 };
+
+  const sendUpgradeStk = async () => {
+    if (!editProp) return;
+    if (!upgradePhone.trim()) { setUpgradeMsg('Enter the client M-Pesa number.'); return; }
+    setUpgradeBusy(true); setUpgradeMsg('');
+    try {
+      const { apiClient } = await import('../../shared/api/apiClient');
+      const res = await apiClient.post(`/api/v1/plotconnect/properties/${editProp.id}/upgrade-package`, {
+        newPackage: upgradePkg,
+        mpesaPhone: upgradePhone.trim(),
+      });
+      const d = (res.data as any);
+      setUpgradeMsg(d.message || `STK Push sent for package upgrade to ${upgradePkg}.`);
+      if (d.autoCompleted) onRefetch();
+    } catch (err: any) {
+      setUpgradeMsg(err?.response?.data?.error || 'Failed to send STK Push.');
+    } finally { setUpgradeBusy(false); }
+  };
+
+  const openEdit = (p: any) => {
+    setEditProp(p);
+    setEditForm({
+      propertyName:  p.propertyName  || '',
+      ownerName:     p.ownerName     || '',
+      ownerPhone:    p.ownerPhone    || '',
+      county:        p.county        || '',
+      area:          p.area          || '',
+      contactPerson: p.contactPerson || '',
+      description:   p.description   || '',
+      websiteLink:   p.websiteLink   || '',
+      mapLink:       p.mapLink       || '',
+    });
+    setEditMsg('');
+    // Default to the next tier above the current package
+    const pkgOrder = ['BASIC', 'STANDARD', 'ADVANCED'];
+    const currentIdx = pkgOrder.indexOf(p.package || 'BASIC');
+    setUpgradePkg(pkgOrder[Math.min(currentIdx + 1, pkgOrder.length - 1)]);
+    setUpgradePhone('');
+    setUpgradeMsg('');
+    // Load images
+    setViewImages([]); setViewImgIdx(0);
+    import('../../shared/api/apiClient').then(({ apiClient }) =>
+      apiClient.get(`/api/v1/plotconnect/properties/${p.id}/images`)
+        .then(res => setViewImages((res.data as any)?.images || []))
+        .catch(() => {})
+    );
+  };
+
+  const saveEdit = async () => {
+    if (!editProp) return;
+    setEditBusy(true); setEditMsg('');
+    try {
+      const { apiClient } = await import('../../shared/api/apiClient');
+      await apiClient.patch(`/api/v1/plotconnect/properties/${editProp.id}`, editForm);
+      setEditMsg('✓ Saved successfully.');
+      onRefetch();
+    } catch (err: any) {
+      setEditMsg(err?.response?.data?.error || 'Failed to save.');
+    } finally { setEditBusy(false); }
+  };
+
+  const updateStatus = async (id: string, status: string) => {
+    setBusy(id + status); setMsg('');
+    try {
+      const { apiClient } = await import('../../shared/api/apiClient');
+      await apiClient.patch(`/api/v1/plotconnect/properties/${id}/status`, { status });
+      setMsg(`Property ${status.toLowerCase()} successfully.`);
+      onRefetch();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || 'Failed to update status.');
+    } finally { setBusy(null); }
+  };
+
+  const payBadge = (v: string) => {
+    const cls: Record<string,string> = {
+      PAID: 'bg-green-100 text-green-800',
+      UNPAID: 'bg-slate-100 text-slate-600',
+      AWAITING_CONFIRMATION: 'bg-amber-100 text-amber-800',
+      FAILED: 'bg-red-100 text-red-700',
+    };
+    return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${cls[v] || 'bg-slate-100 text-slate-600'}`}>{(v||'').replace(/_/g,' ')}</span>;
+  };
+
+  const StatusBadge = ({ status }: { status: string }) => {
+    const s = (status || '').toUpperCase();
+    const map: Record<string, { bg: string; text: string; dot: string }> = {
+      ACTIVE:           { bg: '#f0fdf4', text: '#16a34a', dot: '#16a34a' },
+      COMPLETED:        { bg: '#f0fdf4', text: '#16a34a', dot: '#16a34a' },
+      APPROVED:         { bg: '#f0fdf4', text: '#16a34a', dot: '#16a34a' },
+      PUBLISHED:        { bg: '#f0fdf4', text: '#16a34a', dot: '#16a34a' },
+      PENDING:          { bg: '#fffbeb', text: '#d97706', dot: '#d97706' },
+      PENDING_APPROVAL: { bg: '#fffbeb', text: '#d97706', dot: '#d97706' },
+      IN_PROGRESS:      { bg: '#eff6ff', text: '#2563eb', dot: '#2563eb' },
+      DRAFT:            { bg: '#f1f5f9', text: '#64748b', dot: '#64748b' },
+      REJECTED:         { bg: '#fef2f2', text: '#dc2626', dot: '#dc2626' },
+      UNPUBLISHED:      { bg: '#f1f5f9', text: '#64748b', dot: '#64748b' },
+    };
+    const style = map[s] || { bg: '#f1f5f9', text: '#64748b', dot: '#64748b' };
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+        style={{ background: style.bg, color: style.text }}>
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: style.dot }} />
+        {s.replace(/_/g, ' ')}
+      </span>
+    );
+  };
+
+  const inp = 'w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200';
+
+  if (!properties.length) {
+    return <p className="text-sm text-slate-400 py-6 text-center">No PlotConnect properties submitted yet.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {msg && <p className="text-sm px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</p>}
+
+      {/* Edit modal */}
+      {editProp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+          onClick={() => setEditProp(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="font-bold text-slate-900">Edit — {editProp.propertyName}</h3>
+              <button onClick={() => setEditProp(null)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+            </div>
+            <div className="p-5 space-y-3">
+              {editMsg && (
+                <p className={`text-sm px-3 py-2 rounded-lg ${editMsg.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {editMsg}
+                </p>
+              )}
+
+              {/* Image gallery */}
+              <div className="pt-1 pb-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Property Images</p>
+                  {viewImages.length > 0 ? (
+                    <>
+                      <div className="relative rounded-xl overflow-hidden bg-slate-100" style={{ height: 200 }}>
+                        <img src={viewImages[viewImgIdx]?.url} alt="property"
+                          className="w-full h-full object-cover" />
+                        {viewImages.length > 1 && (
+                          <>
+                            <button onClick={() => setViewImgIdx(i => (i - 1 + viewImages.length) % viewImages.length)}
+                              className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60">‹</button>
+                            <button onClick={() => setViewImgIdx(i => (i + 1) % viewImages.length)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60">›</button>
+                            <span className="absolute bottom-2 right-3 text-xs text-white bg-black/40 px-2 py-0.5 rounded-full">
+                              {viewImgIdx + 1}/{viewImages.length}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1">
+                        {viewImages.map((img, i) => (
+                          <div key={img.id || i} className="relative flex-shrink-0 group">
+                            <button onClick={() => setViewImgIdx(i)}
+                              className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all block ${i === viewImgIdx ? 'border-orange-500' : 'border-transparent'}`}>
+                              <img src={img.url} alt="" className="w-full h-full object-cover" />
+                            </button>
+                            {img.id && (
+                              <button
+                                onClick={async () => {
+                                  if (!confirm('Delete this image?')) return;
+                                  try {
+                                    const { apiClient } = await import('../../shared/api/apiClient');
+                                    await apiClient.delete(`/api/v1/plotconnect/properties/${editProp!.id}/images/${img.id}`);
+                                    setViewImages(prev => prev.filter(x => x.id !== img.id));
+                                    setViewImgIdx(0);
+                                  } catch { alert('Failed to delete image.'); }
+                                }}
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                title="Delete image">×</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic mb-1">No images uploaded yet.</p>
+                  )}
+                  <ImageUploader propertyId={editProp.id} onUploaded={(imgs) => {
+                    setViewImages(prev => [...prev, ...imgs]);
+                    setViewImgIdx(0);
+                  }} />
+              </div>
+              {([
+                ['propertyName',  'Property Name'],
+                ['ownerName',     'Owner Name'],
+                ['ownerPhone',    'Owner Phone'],
+                ['county',        'County'],
+                ['area',          'Area / Neighbourhood'],
+                ['contactPerson', 'Contact Person'],
+                ['websiteLink',   'Website Link'],
+                ['mapLink',       'Map Link'],
+              ] as [string, string][]).map(([field, label]) => (
+                <div key={field}>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+                  <input className={inp} value={editForm[field] || ''}
+                    onChange={e => setEditForm((f: any) => ({ ...f, [field]: e.target.value }))} />
+                </div>
+              ))}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+                <textarea rows={3} className={`${inp} resize-none`} value={editForm.description || ''}
+                  onChange={e => setEditForm((f: any) => ({ ...f, description: e.target.value }))} />
+              </div>
+
+              {/* Package upgrade section */}
+              <div className="pt-3 border-t border-slate-100">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Package Upgrade</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Current: <span className="font-semibold text-slate-700">{editProp?.package || '—'}</span>
+                  {editProp?.package && ` (KSh ${(PRICES[editProp.package] || 0).toLocaleString()})`}
+                  . Client pays the difference via M-Pesa STK Push.
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Upgrade To</label>
+                    <select className={inp} value={upgradePkg}
+                      onChange={e => setUpgradePkg(e.target.value)}>
+                      {(['BASIC', 'STANDARD', 'ADVANCED'] as const)
+                        .filter(pkg => (PRICES[pkg] || 0) > (PRICES[editProp?.package || ''] || 0))
+                        .map(pkg => (
+                          <option key={pkg} value={pkg}>
+                            {pkg.charAt(0) + pkg.slice(1).toLowerCase()} — KSh {(PRICES[pkg] || 0).toLocaleString()}
+                          </option>
+                        ))
+                      }
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Client M-Pesa Number</label>
+                    <input className={inp} placeholder="07XXXXXXXX" value={upgradePhone}
+                      onChange={e => setUpgradePhone(e.target.value)} />
+                  </div>
+                  {editProp?.package && upgradePkg && PRICES[upgradePkg] > (PRICES[editProp.package] || 0) && (
+                    <p className="text-xs text-slate-500">
+                      Amount to charge: <span className="font-semibold text-slate-800">
+                        KSh {(PRICES[upgradePkg] - (PRICES[editProp.package] || 0)).toLocaleString()}
+                      </span>
+                    </p>
+                  )}
+                  <button disabled={upgradeBusy} onClick={sendUpgradeStk}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-40 transition-colors">
+                    {upgradeBusy ? 'Sending STK…' : 'Send STK Push for Upgrade'}
+                  </button>
+                  {upgradeMsg && (
+                    <p className={`text-xs px-3 py-2 rounded-lg ${upgradeMsg.startsWith('✓') || upgradeMsg.includes('sent') || upgradeMsg.includes('SANDBOX') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                      {upgradeMsg}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-2">
+              <button disabled={editBusy} onClick={saveEdit}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                {editBusy ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button onClick={() => setEditProp(null)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-slate-100">
+        <table className="w-full text-sm bg-white">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>
+              {['Property', 'Location', 'Package', 'Agent', 'Payment', 'Status', 'Actions'].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {properties.map((p: any) => (
+              <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{p.propertyName}</td>
+                <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{[p.area, p.county].filter(Boolean).join(', ') || '—'}</td>
+                <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.package || '—'}</td>
+                <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{p.agentName || '—'}</td>
+                <td className="px-4 py-3">{payBadge(p.paymentStatus || 'UNPAID')}</td>
+                <td className="px-4 py-3"><StatusBadge status={p.status || 'PENDING'} /></td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1.5 flex-wrap">
+                    {/* Edit button — always available to EA */}
+                    <button onClick={() => openEdit(p)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors">
+                      Edit
+                    </button>
+                    {/* Status actions */}
+                    {(p.status === 'PENDING' || p.status === 'REJECTED') && (
+                      <button disabled={!!busy} onClick={() => updateStatus(p.id, 'APPROVED')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-40 transition-colors">
+                        {busy === p.id + 'APPROVED' ? '…' : 'Approve'}
+                      </button>
+                    )}
+                    {(p.status === 'PENDING' || p.status === 'APPROVED') && (
+                      <button disabled={!!busy} onClick={() => updateStatus(p.id, 'REJECTED')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-40 transition-colors">
+                        {busy === p.id + 'REJECTED' ? '…' : 'Reject'}
+                      </button>
+                    )}
+                    {p.status === 'APPROVED' && (
+                      <button disabled={!!busy} onClick={() => updateStatus(p.id, 'PUBLISHED')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                        {busy === p.id + 'PUBLISHED' ? '…' : 'Publish'}
+                      </button>
+                    )}
+                    {p.status === 'PUBLISHED' && (
+                      <button disabled={!!busy} onClick={() => updateStatus(p.id, 'UNPUBLISHED')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 transition-colors">
+                        {busy === p.id + 'UNPUBLISHED' ? '…' : 'Unpublish'}
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── EA Dashboard ─────────────────────────────────────────────────────────────
 // EA does NOT execute or request payments. EA handles contracts, regions, agent oversight.
 const EA_NAV = [
   { id: 'overview',           label: 'Overview',              icon: I.overview },
+  { id: 'plotconnect',        label: 'PlotConnect Review',   icon: I.ops },
   { id: 'contract-generator', label: 'Contract Generator',    icon: I.contract },
   { id: 'contract-status',    label: 'Contract Status Board', icon: I.contract },
   { id: 'region-country',     label: 'Region & Country',      icon: I.region },
@@ -1413,6 +1811,7 @@ function EADashboard({ data, refetch, user, onLogout }: { data: any; refetch: (k
   const projects = data.projects || [];
   const clients = data.clients || [];
   const teams = data.teams || [];
+  const properties = data.properties || [];
 
   const nav = EA_NAV.map(n => n.id === 'notifications' ? { ...n, badge: notifs.filter((x: any) => !x.read).length } : n);
 
@@ -1422,15 +1821,23 @@ function EADashboard({ data, refetch, user, onLogout }: { data: any; refetch: (k
       {section === 'overview' && (
         <div>
           <SectionHeader title="EA Overview" subtitle="Your pending tasks at a glance" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <StatCard label="Contracts to Generate" value={pendingContracts.filter((c: any) => c.status === 'PENDING').length} icon={I.contract} color={theme.hex} />
             <StatCard label="Regions Managed" value={regions.length} icon={I.region} color={theme.hex} />
             <StatCard label="Agents Overseen" value={agents.length} icon={I.agent} color={theme.hex} />
+            <StatCard label="Properties Pending Review" value={properties.filter((p: any) => p.status === 'PENDING').length} icon={I.ops} color={theme.hex} />
           </div>
         </div>
       )}
 
       {section === 'payment-execution' && null /* EA no longer executes payments — handled by CFO/CoS/CEO */}
+
+      {section === 'plotconnect' && (
+        <div>
+          <SectionHeader title="PlotConnect Property Review" subtitle="Review and manage property submissions" />
+          <PlotConnectReview properties={properties} onRefetch={() => refetch(['properties'])} />
+        </div>
+      )}
 
       {section === 'contract-generator' && (
         <div>
@@ -1494,6 +1901,11 @@ function EADashboard({ data, refetch, user, onLogout }: { data: any; refetch: (k
         <div>
           <SectionHeader title="Service Amounts" subtitle="View and edit commitment, PlotConnect, and category amounts" />
           <ServiceAmountsSection amounts={serviceAmounts} refetch={() => refetch(['serviceAmounts'])} />
+          <div className="mt-8">
+            <h2 className="text-base font-semibold text-slate-800 mb-1">TST PlotConnect Package Amounts</h2>
+            <p className="text-sm text-slate-500 mb-4">Propose changes to PlotConnect listing package prices. CEO must confirm before changes take effect.</p>
+            <PlotConnectProperties themeHex={theme.hex} canManagePkg={true} canApprove={true} canPublish={true} showAgent={false} showRevenue={false} />
+          </div>
         </div>
       )}
 
@@ -1618,10 +2030,11 @@ export default function ExecutivePortal() {
     { key: 'projects',          endpoint: '/api/v1/projects?limit=200',                fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.projects || r.data || []) },
     { key: 'clients',           endpoint: '/api/v1/clients/all',                       fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.data || r.clients || []) },
     { key: 'teams',             endpoint: '/api/v1/organization/teams',                fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.data || []) },
+    { key: 'properties',       endpoint: '/api/v1/plotconnect/properties?limit=200',  fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.data || []) },
   ] as any, [
     'data:payment:created', 'data:payment:approved', 'data:payment:rejected', 'data:payment:executed',
     'data:metrics:updated', 'data:notification:new', 'data:service_amount:changed',
-    'data:contract:generated', 'data:client:status_changed',
+    'data:contract:generated', 'data:client:status_changed', 'data:property:updated',
   ]);
 
   const handleLogout = () => { logout(); navigate('/login'); };

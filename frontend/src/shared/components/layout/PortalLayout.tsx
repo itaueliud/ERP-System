@@ -67,10 +67,11 @@ export function SectionHeader({ title, subtitle, action }: { title: string; subt
 }
 
 // ─── Portal Button ────────────────────────────────────────────────────────────
-export function PortalButton({ children, onClick, variant = 'primary', size = 'md', color, disabled, fullWidth, icon }: {
+export function PortalButton({ children, onClick, variant = 'primary', size = 'md', color, disabled, fullWidth, icon, type = 'button' }: {
   children: React.ReactNode; onClick?: () => void;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg'; color?: string; disabled?: boolean; fullWidth?: boolean; icon?: React.ReactNode;
+  type?: 'button' | 'submit' | 'reset';
 }) {
   const sz = { sm: 'px-3 py-1.5 text-xs', md: 'px-4 py-2.5 text-sm', lg: 'px-6 py-3 text-base' }[size];
   const base = `inline-flex items-center gap-2 font-semibold rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1
@@ -85,7 +86,7 @@ export function PortalButton({ children, onClick, variant = 'primary', size = 'm
   };
 
   return (
-    <button onClick={onClick} disabled={disabled} style={disabled ? {} : styles[variant]} className={base}>
+    <button type={type} onClick={onClick} disabled={disabled} style={disabled ? {} : styles[variant]} className={base}>
       {icon && <span className="flex-shrink-0">{icon}</span>}
       {children}
     </button>
@@ -157,12 +158,25 @@ export function StatusBadge({ status }: { status: string }) {
     NEGOTIATION: 'bg-orange-100 text-orange-800',
     PUBLISHED: 'bg-green-100 text-green-800',
     SUBMITTED: 'bg-blue-100 text-blue-800',
+    UNDER_REVIEW: 'bg-blue-100 text-blue-800',
     OVERDUE: 'bg-red-100 text-red-700',
   };
   const cls = map[s] || 'bg-slate-100 text-slate-600';
+  const labels: Record<string, string> = {
+    UNDER_REVIEW: 'Under Review',
+    CLOSED_WON: 'Closed Won',
+    NEW_LEAD: 'New Lead',
+    LEAD_ACTIVATED: 'Lead Activated',
+    LEAD_QUALIFIED: 'Lead Qualified',
+    IN_PROGRESS: 'In Progress',
+    NOT_STARTED: 'Not Started',
+    PENDING_APPROVAL: 'Pending Approval',
+    PENDING_COMMITMENT: 'Pending Commitment',
+  };
+  const label = labels[s] || s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold ${cls}`}>
-      {s.replace(/_/g, ' ')}
+      {label}
     </span>
   );
 }

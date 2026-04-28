@@ -1,11 +1,30 @@
 import { Router, Request, Response } from 'express';
 import passport from 'passport';
+import rateLimit from 'express-rate-limit';
 import { authService } from './authService';
+import { authenticate } from './authMiddleware';
 import { githubClient } from '../services/github/client';
 import logger from '../utils/logger';
 
 const router = Router();
 
+// Strict rate limiter for login — 10 attempts per 15 minutes per IP
+const loginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiter for password reset — 5 requests per hour per IP
+const passwordResetRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many password reset requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 // Initialize GitHub OAuth strategy
 githubClient.configureOAuth();
 
@@ -13,7 +32,7 @@ githubClient.configureOAuth();
  * POST /auth/login
  * Authenticate user and return JWT token
  */
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', loginRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
@@ -116,19 +135,13 @@ router.get(
 
 /**
  * POST /auth/logout
- * Logout user and invalidate session
+ * Logout user and invalidate session — requires a valid JWT.
+ * The session to invalidate is taken from the token itself, not the request body.
  */
-router.post('/logout', async (req: Request, res: Response) => {
+router.post('/logout', authenticate, async (req: Request, res: Response) => {
   try {
-    const { userId, sessionId } = req.body;
-
-    if (!userId || !sessionId) {
-      return res.status(400).json({
-        error: 'User ID and session ID are required',
-      });
-    }
-
-    await authService.logout(userId, sessionId);
+    const user = (req as any).user;
+    await authService.logout(user.id, user.sessionId);
 
     // Clear cookie
     res.clearCookie('auth_token');
@@ -149,7 +162,7 @@ router.post('/logout', async (req: Request, res: Response) => {
  * POST /auth/forgot-password
  * Request password reset email
  */
-router.post('/forgot-password', async (req: Request, res: Response) => {
+router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
 
@@ -176,9 +189,9 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 
 /**
  * POST /auth/reset-password
- * Reset password with token
+ * Reset password with token — rate limited to prevent timing probes
  */
-router.post('/reset-password', async (req: Request, res: Response) => {
+router.post('/reset-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
   try {
     const { token, newPassword } = req.body;
 
@@ -188,10 +201,11 @@ router.post('/reset-password', async (req: Request, res: Response) => {
       });
     }
 
-    // Validate password strength
-    if (newPassword.length < 8) {
+    // Validate password strength — same rules as registration
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/;
+    if (!passwordRegex.test(newPassword)) {
       return res.status(400).json({
-        error: 'Password must be at least 8 characters long',
+        error: 'Password must be at least 12 characters and contain uppercase, lowercase, number, and special character',
       });
     }
 

@@ -618,7 +618,7 @@ export class DashboardService {
    */
   async getPropertyMetrics(): Promise<PropertyMetrics> {
     return this.getCachedMetrics('property-metrics', async () => {
-      const [statusResult, typeResult] = await Promise.all([
+      const [statusResult, typeResult, marketerResult] = await Promise.all([
         db.query(
           `SELECT status, COUNT(*) AS count, COALESCE(SUM(price), 0) AS total_value
            FROM property_listings
@@ -630,6 +630,14 @@ export class DashboardService {
            GROUP BY property_type
            ORDER BY count DESC`
         ),
+        // Also count TST PlotConnect (marketer_properties) submissions
+        db.query(
+          `SELECT
+             COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS published,
+             COUNT(*) FILTER (WHERE payment_status = 'PAID') AS paid
+           FROM marketer_properties`
+        ).catch(() => ({ rows: [{ total: 0, published: 0, paid: 0 }] })),
       ]);
 
       const statusMap = this.groupByField(statusResult.rows, 'status', 'count');
@@ -638,12 +646,17 @@ export class DashboardService {
         0
       );
       const total = statusResult.rows.reduce((sum: number, r: any) => sum + parseInt(r.count), 0);
+      const marketer = marketerResult.rows[0] || {};
 
       return {
-        total,
+        total: total + parseInt(marketer.total || '0'),
         available: parseInt(statusMap['AVAILABLE'] ?? '0'),
         sold: parseInt(statusMap['SOLD'] ?? '0'),
         unavailable: parseInt(statusMap['UNAVAILABLE'] ?? '0'),
+        // PlotConnect published properties
+        published: parseInt(marketer.published || '0'),
+        plotconnectTotal: parseInt(marketer.total || '0'),
+        plotconnectPaid: parseInt(marketer.paid || '0'),
         totalValue,
         byType: typeResult.rows.map((r: any) => ({
           type: r.property_type,
@@ -651,7 +664,7 @@ export class DashboardService {
           totalValue: parseFloat(r.total_value),
         })),
         generatedAt: new Date(),
-      };
+      } as any;
     });
   }
 

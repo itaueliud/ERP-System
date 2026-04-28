@@ -114,10 +114,10 @@ BEGIN
           'Developer User', '+254700000009', 'Kenya', v_dev_role, v_cto_dept, 'en', 'Africa/Nairobi')
   ON CONFLICT (email) DO NOTHING;
 
-  -- Agent  (portal: /agents)
+  -- Agent  (portal: /agents)  password: Agent@1234567!
   INSERT INTO users (email, password_hash, full_name, phone, country, role_id, department_id, language_preference, timezone)
   VALUES ('agent@tst.com',
-          '$2b$10$NjaTQwFUCOwgGFRT10MoNubCPOnZ/8v69sFH3Xq3BtamIOR0W0WUG',
+          '$2b$10$S5DOZft3bMaNGdsqZAjlh.QaFJ/cMXadUPkHiZi5Z6OFSejRwkEEi',
           'Sales Agent', '+254700000010', 'Kenya', v_agent_role, v_sales_dept, 'en', 'Africa/Nairobi')
   ON CONFLICT (email) DO NOTHING;
 

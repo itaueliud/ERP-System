@@ -8,6 +8,7 @@ import { projectDisplayStatus } from '../../shared/utils/projectStatus';
 import ChatPanel from '../../shared/components/chat/ChatPanel';
 import { FAQPanel } from '../../shared/components/layout/FAQPanel';
 import { CEO_FAQS } from '../../shared/data/portalFAQs';
+import PlotConnectProperties from '../../shared/components/plotconnect/PlotConnectProperties';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -602,14 +603,117 @@ function SalesSection({ data }: { data: any }) {
   );
 }
 
+// ─── PlotConnect Property Review ─────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function PlotConnectReview({ properties, onRefetch }: { properties: any[]; onRefetch: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg,  setMsg]  = useState('');
+
+  const updateStatus = async (id: string, status: string) => {
+    setBusy(id + status); setMsg('');
+    try {
+      await apiClient.patch(`/api/v1/plotconnect/properties/${id}/status`, { status });
+      setMsg(`Property ${status.toLowerCase()} successfully.`);
+      onRefetch();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || 'Failed to update status.');
+    } finally { setBusy(null); }
+  };
+
+  const payBadge = (v: string) => {
+    const cls: Record<string,string> = {
+      PAID: 'bg-green-100 text-green-800',
+      UNPAID: 'bg-slate-100 text-slate-600',
+      AWAITING_CONFIRMATION: 'bg-amber-100 text-amber-800',
+      FAILED: 'bg-red-100 text-red-700',
+    };
+    return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${cls[v] || 'bg-slate-100 text-slate-600'}`}>{(v||'').replace(/_/g,' ')}</span>;
+  };
+
+  if (!properties.length) {
+    return <p className="text-sm text-slate-400 py-6 text-center">No PlotConnect properties submitted yet.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {msg && <p className="text-sm px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</p>}
+      <div className="overflow-x-auto rounded-xl border border-slate-100">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>
+              {['Property', 'Location', 'Package', 'Agent', 'Payment', 'Status', 'Actions'].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {properties.map((p: any) => (
+              <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{p.propertyName}</td>
+                <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{[p.area, p.county].filter(Boolean).join(', ') || '—'}</td>
+                <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.package || '—'}</td>
+                <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{p.agentName || '—'}</td>
+                <td className="px-4 py-3">{payBadge(p.paymentStatus || 'UNPAID')}</td>
+                <td className="px-4 py-3"><Badge status={p.status || 'PENDING'} /></td>
+                <td className="px-4 py-3">
+                  {p.status === 'PENDING' || p.status === 'REJECTED' ? (
+                    <div className="flex gap-2">
+                      <button
+                        disabled={!!busy}
+                        onClick={() => updateStatus(p.id, 'APPROVED')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-40 transition-colors">
+                        {busy === p.id + 'APPROVED' ? '…' : 'Approve'}
+                      </button>
+                      <button
+                        disabled={!!busy}
+                        onClick={() => updateStatus(p.id, 'REJECTED')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-40 transition-colors">
+                        {busy === p.id + 'REJECTED' ? '…' : 'Reject'}
+                      </button>
+                    </div>
+                  ) : p.status === 'APPROVED' ? (
+                    <div className="flex gap-2">
+                      <button
+                        disabled={!!busy}
+                        onClick={() => updateStatus(p.id, 'PUBLISHED')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                        {busy === p.id + 'PUBLISHED' ? '…' : 'Publish'}
+                      </button>
+                      <button
+                        disabled={!!busy}
+                        onClick={() => updateStatus(p.id, 'REJECTED')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-40 transition-colors">
+                        {busy === p.id + 'REJECTED' ? '…' : 'Reject'}
+                      </button>
+                    </div>
+                  ) : p.status === 'PUBLISHED' ? (
+                    <button
+                      disabled={!!busy}
+                      onClick={() => updateStatus(p.id, 'UNPUBLISHED')}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 transition-colors">
+                      {busy === p.id + 'UNPUBLISHED' ? '…' : 'Unpublish'}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section: Operations ──────────────────────────────────────────────────────
-function OperationsSection({ data }: { data: any }) {
+function OperationsSection({ data, refetch: _refetch }: { data: any; refetch: (k?: string[]) => void }) {
   const projects   = data.projects   || [];
   const properties = data.properties || [];
   const repos      = data.repos      || [];
   const contracts  = data.contracts  || [];
   const m          = data.metrics    || {};
-  const [tab, setTab] = useState<'projects' | 'properties' | 'github'>('projects');
+  const [tab, setTab] = useState<'projects' | 'plotconnect' | 'github'>('projects');
   const [viewProject, setViewProject] = useState<any | null>(null);
 
   const totalProjects  = m.projects?.total  ?? projects.length;
@@ -722,11 +826,11 @@ function OperationsSection({ data }: { data: any }) {
 
       <div className={card}>
         <div className="flex border-b border-slate-100">
-          {(['projects', 'properties', 'github'] as const).map(t => (
+          {(['projects', 'plotconnect', 'github'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className="px-5 py-3.5 text-sm font-semibold transition-all border-b-2 -mb-px capitalize"
               style={tab === t ? { borderColor: C.blue2, color: C.blue2 } : { borderColor: 'transparent', color: C.muted }}>
-              {t === 'github' ? 'GitHub' : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'github' ? 'GitHub' : t === 'plotconnect' ? 'PlotConnect' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
@@ -747,19 +851,6 @@ function OperationsSection({ data }: { data: any }) {
               empty="No projects yet"
             />
           )}
-          {tab === 'properties' && (
-            <Table
-              cols={[
-                { key: 'propertyName',  label: 'Property' },
-                { key: 'location',      label: 'Location' },
-                { key: 'propertyType',  label: 'Type',    render: v => (v || '').replace(/_/g, ' ') },
-                { key: 'placementTier', label: 'Tier',    render: v => v || '—' },
-                { key: 'status',        label: 'Status',  render: v => <Badge status={v || 'PENDING'} /> },
-              ]}
-              rows={properties}
-              empty="No properties listed"
-            />
-          )}
           {tab === 'github' && (
             <Table
               cols={[
@@ -770,6 +861,15 @@ function OperationsSection({ data }: { data: any }) {
               ]}
               rows={repos}
               empty="No repositories linked"
+            />
+          )}
+          {tab === 'plotconnect' && (
+            <PlotConnectProperties
+              themeHex={C.blue2}
+              canApprove
+              canPublish
+              showAgent
+              showRevenue
             />
           )}
         </div>
@@ -2800,7 +2900,7 @@ export default function CEOPortal() {
     { key: 'techRequests',       endpoint: '/api/v1/tech-funding-requests',        fallback: [], transform: (r: any) => Array.isArray(r) ? r : r.data || [] },
     { key: 'complianceReports',  endpoint: '/api/v1/reports/compliance',          fallback: [], transform: (r: any) => Array.isArray(r) ? r : r.data || [] },
     { key: 'clients',            endpoint: '/api/v1/clients/all',                 fallback: [], transform: (r: any) => Array.isArray(r) ? r : r.data || r.clients || [] },
-    { key: 'properties',         endpoint: '/api/v1/properties',                  fallback: [], transform: (r: any) => Array.isArray(r) ? r : r.data || r.properties || [] },
+    { key: 'properties',         endpoint: '/api/v1/plotconnect/properties?limit=200', fallback: [], transform: (r: any) => Array.isArray(r) ? r : r.data || r.properties || [] },
     { key: 'projects',           endpoint: '/api/v1/projects?limit=200',              fallback: [], transform: (r: any) => Array.isArray(r) ? r : r.projects || r.data || [] },
     { key: 'repos',              endpoint: '/api/v1/github/repos',                fallback: [], transform: (r: any) => Array.isArray(r) ? r : r.data || [] },
     { key: 'commissions',        endpoint: '/api/v1/commissions',                 fallback: [], transform: (r: any) => Array.isArray(r) ? r : r.data || [] },

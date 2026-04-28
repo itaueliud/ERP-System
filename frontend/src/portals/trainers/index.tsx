@@ -7,6 +7,7 @@ import { useMultiPortalData } from '../../shared/utils/usePortalData';
 import { AFRICAN_COUNTRIES } from '../../shared/utils/africanCountries';
 import ChatPanel from '../../shared/components/chat/ChatPanel';
 import { TRAINERS_FAQS } from '../../shared/data/portalFAQs';
+import PlotConnectProperties from '../../shared/components/plotconnect/PlotConnectProperties';
 
 const theme = PORTAL_THEMES.trainers;
 const cardCls = 'rounded-2xl p-5';
@@ -125,6 +126,7 @@ function ChatSection({ token, currentUserId, portal }: { token: string; currentU
 }
 
 // ─── Shared: Notifications ────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function NotificationsSection({ notifs, refetch }: { notifs: any[]; refetch?: () => void }) {
   const [localNotifs, setLocalNotifs] = React.useState(notifs);
   React.useEffect(() => setLocalNotifs(notifs), [notifs]);
@@ -172,12 +174,12 @@ function NotificationsSection({ notifs, refetch }: { notifs: any[]; refetch?: ()
 
 // ─── TRAINER Dashboard ────────────────────────────────────────────────────────
 const TRAINER_NAV = [
-  { id: 'overview', label: 'Overview', icon: I.overview },
-  { id: 'my-agents', label: 'My Agents', icon: I.agents },
-  { id: 'client-leads', label: 'Client Leads', icon: I.leads },
-  { id: 'achievements', label: 'Achievements', icon: I.achieve },
-  { id: 'chat-cfo', label: 'Chat with CFO', icon: I.chat },
-  { id: 'daily-report', label: 'Daily Report', icon: I.report },
+  { id: 'overview',    label: 'Overview',    icon: I.overview },
+  { id: 'my-agents',   label: 'My Agents',   icon: I.agents },
+  { id: 'client-leads',label: 'Client Leads',icon: I.leads },
+  { id: 'achievements',label: 'Achievements',icon: I.achieve },
+  { id: 'chat-cfo',    label: 'Chat with CFO',icon: I.chat },
+  { id: 'daily-report',label: 'Daily Report',icon: I.report },
 ];
 
 function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (keys?: any[]) => void; user: any; onLogout: () => void }) {
@@ -195,7 +197,9 @@ function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetc
 
   const nav = TRAINER_NAV;
 
-  const activeLeads = clients.filter((c: any) => c.status === 'ACTIVE' || c.leadStatus === 'ACTIVE').length;
+  const activeLeads = clients.filter((c: any) =>
+    ['CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED', 'NEGOTIATION'].includes(c.status)
+  ).length;
   const convertedThisMonth = clients.filter((c: any) => {
     const converted = c.status === 'CONVERTED' || c.leadStatus === 'CONVERTED';
     if (!converted) return false;
@@ -232,7 +236,7 @@ function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetc
         <div>
           <SectionHeader title="Trainer Overview" subtitle="Your performance at a glance" />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="My Agents" value={agents.length} icon={I.agents} color={theme.hex} />
+            <StatCard label="My Agents" value={agents.length || metrics.agentCount || 0} icon={I.agents} color={theme.hex} />
             <StatCard label="Active Leads" value={activeLeads || metrics.activeLeads || 0} icon={I.leads} color={theme.hex} />
             <StatCard label="Converted This Month" value={convertedThisMonth || metrics.convertedThisMonth || 0} icon={I.achieve} color={theme.hex} />
             <StatCard label="Country Performance" value={metrics.countryScore ?? '—'} icon={I.country} color={theme.hex} />
@@ -347,7 +351,7 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
   const [assignClientForm, setAssignClientForm] = useState({ clientId: '', accountExecutiveId: '' });
   const [assignClientMsg, setAssignClientMsg] = useState('');
   const [assignClientOk, setAssignClientOk] = useState(false);
-  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [assignClientBusy, setAssignClientBusy] = useState(false);
 
   const agents = data.myAgents || [];
   const trainers = data.trainers || [];
@@ -362,18 +366,6 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
 
   const activeLeads = (data.clients || []).filter((c: any) =>
     ['NEW_LEAD', 'CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED', 'NEGOTIATION'].includes(c.status)).length;
-
-  // Load users list when assign-client section is active
-  React.useEffect(() => {
-    if (section === 'assign-client' && allUsers.length === 0) {
-      import('../../shared/api/apiClient').then(({ apiClient }) =>
-        apiClient.get('/api/v1/users').then((res: any) => {
-          const users = res.data?.data || res.data || [];
-          setAllUsers(Array.isArray(users) ? users : []);
-        }).catch(() => {})
-      );
-    }
-  }, [section]);
 
   const submitReassign = async (agentId: string) => {
     setReassignMsg('');
@@ -574,48 +566,93 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
       {section === 'chat' && <div><SectionHeader title="Chat" /><ChatSection token={user?.token || ''} currentUserId={user?.id || ''} portal="Operations Portal" /></div>}
       {section === 'report' && <div><SectionHeader title="Daily Report" subtitle="Submit your daily report" /><DailyReportForm /></div>}
 
-      {/* Assign Converted Client — doc §4: HoT assigns converted client to specific Account Executive */}
+      {/* Assign Converted Client — doc §4: HoT assigns converted client to trainer for active engagement */}
       {section === 'assign-client' && (
         <div>
-          <SectionHeader title="Assign Converted Client" subtitle="Assign a CLOSED_WON client to a trainer for active engagement" />
-          {assignClientMsg && <div className={`p-3 rounded-xl text-sm mb-4 ${assignClientOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{assignClientMsg}</div>}
+          <SectionHeader title="Assign Converted Client" subtitle="Assign a converted client to a trainer — client moves to NEGOTIATION" />
+          {assignClientMsg && (
+            <div className={`p-3 rounded-xl text-sm mb-4 ${assignClientOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              {assignClientMsg}
+            </div>
+          )}
           <form onSubmit={async (e) => {
             e.preventDefault();
             setAssignClientMsg('');
+            setAssignClientBusy(true);
             try {
               const { apiClient } = await import('../../shared/api/apiClient');
-              await apiClient.post(`/api/v1/agents/clients/${assignClientForm.clientId}/assign-account-exec`, { accountExecutiveId: assignClientForm.accountExecutiveId });
+              const res = await apiClient.post(
+                `/api/v1/agents/clients/${assignClientForm.clientId}/assign-account-exec`,
+                { trainerId: assignClientForm.accountExecutiveId }
+              );
               setAssignClientOk(true);
-              setAssignClientMsg('Client assigned successfully!');
+              setAssignClientMsg((res.data as any)?.message || 'Client assigned successfully!');
               setAssignClientForm({ clientId: '', accountExecutiveId: '' });
-              refetch(['clients']);
+              refetch(['clients', 'trainers']);
             } catch (err: any) {
               setAssignClientOk(false);
               setAssignClientMsg(err?.response?.data?.error || 'Failed to assign client');
+            } finally {
+              setAssignClientBusy(false);
             }
           }} className={`${cardCls} max-w-lg`} style={cardStyle}>
+
+            {/* Client selector */}
             <div className="mb-4">
               <label className={labelCls}>Converted Client *</label>
-              <select required value={assignClientForm.clientId} onChange={e => setAssignClientForm(f => ({ ...f, clientId: e.target.value }))} className={inputCls}>
+              <select
+                required
+                value={assignClientForm.clientId}
+                onChange={e => setAssignClientForm(f => ({ ...f, clientId: e.target.value }))}
+                className={inputCls}
+              >
                 <option value="">Select client…</option>
-                {(data.clients || []).filter((c: any) => c.status === 'CLOSED_WON').map((c: any) => (
-                  <option key={c.id} value={c.id}>{c.name} — {c.serviceDescription?.slice(0, 40) || '—'}</option>
-                ))}
+                {(data.clients || [])
+                  .filter((c: any) => ['CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED'].includes(c.status))
+                  .map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {c.status.replace(/_/g, ' ')}
+                      {c.serviceDescription ? ` — ${c.serviceDescription.slice(0, 35)}` : ''}
+                    </option>
+                  ))}
               </select>
-              {(data.clients || []).filter((c: any) => c.status === 'CLOSED_WON').length === 0 && (
-                <p className="text-xs text-gray-400 mt-1">No CLOSED_WON clients available yet</p>
+              {(data.clients || []).filter((c: any) => ['CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED'].includes(c.status)).length === 0 && (
+                <p className="text-xs text-gray-400 mt-1">
+                  No converted clients yet — clients appear here once they reach CONVERTED, LEAD ACTIVATED, or LEAD QUALIFIED status
+                </p>
               )}
             </div>
+
+            {/* Trainer selector — uses data.trainers already loaded */}
             <div className="mb-6">
               <label className={labelCls}>Assign to Trainer *</label>
-              <select required value={assignClientForm.accountExecutiveId} onChange={e => setAssignClientForm(f => ({ ...f, accountExecutiveId: e.target.value }))} className={inputCls}>
+              <select
+                required
+                value={assignClientForm.accountExecutiveId}
+                onChange={e => setAssignClientForm(f => ({ ...f, accountExecutiveId: e.target.value }))}
+                className={inputCls}
+              >
                 <option value="">Select trainer…</option>
-                {allUsers.filter((u: any) => ['TRAINER', 'HEAD_OF_TRAINERS'].includes(u.roleName || u.role || '')).map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.fullName || u.full_name || u.email}</option>
+                {(data.trainers || []).map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.fullName || t.full_name || t.name || t.email}
+                    {t.assignedClients != null ? ` (${t.assignedClients} clients)` : ''}
+                  </option>
                 ))}
               </select>
+              {(data.trainers || []).length === 0 && (
+                <p className="text-xs text-gray-400 mt-1">No trainers found</p>
+              )}
             </div>
-            <PortalButton color={theme.hex} fullWidth>Assign Client</PortalButton>
+
+            <PortalButton
+              type="submit"
+              color={theme.hex}
+              fullWidth
+              disabled={assignClientBusy || !assignClientForm.clientId || !assignClientForm.accountExecutiveId}
+            >
+              {assignClientBusy ? 'Assigning…' : 'Assign Client'}
+            </PortalButton>
           </form>
         </div>
       )}
@@ -632,12 +669,14 @@ export default function TrainersPortal() {
     myAgents: any[]; clients: any[]; achievements: any[];
     trainers: any[]; notifications: any[]; metrics: any;
   }>([
-    { key: 'myAgents', endpoint: '/api/v1/training/agent-records', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.agents ?? []) },
+    // /api/v1/clients/all handles both roles: HoT gets all clients, TRAINER gets only their assigned clients
     { key: 'clients', endpoint: '/api/v1/clients/all', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.clients ?? []) },
-    { key: 'achievements', endpoint: '/api/v1/achievements', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.achievements ?? []) },
+    // /api/v1/trainer/agents returns agents for TRAINER; HoT uses training/agent-records
+    { key: 'myAgents', endpoint: '/api/v1/training/agent-records', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.agents ?? []) },
+    { key: 'achievements', endpoint: '/api/v1/trainer/country-achievements', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data?.trainers ?? r?.achievements ?? []) },
     { key: 'trainers', endpoint: '/api/v1/trainers/performance', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.trainers ?? []) },
     { key: 'notifications', endpoint: '/api/v1/notifications', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.notifications ?? r?.data ?? []) },
-    { key: 'metrics', endpoint: '/api/v1/dashboard/metrics', fallback: {}, transform: (r: any) => r?.data ?? r ?? {} },
+    { key: 'metrics', endpoint: '/api/v1/trainer/dashboard', fallback: {}, transform: (r: any) => r?.data ?? r ?? {} },
   ], [
     'data:client:created', 'data:client:updated', 'data:client:status_changed',
     'data:lead:converted', 'data:notification:new', 'data:metrics:updated', 'data:report:submitted',

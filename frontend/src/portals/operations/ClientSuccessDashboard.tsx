@@ -30,7 +30,7 @@ export default function ClientSuccessDashboard({ user, onLogout }: { user: any; 
   const [reportForm, setReportForm] = useState({ accomplishments: '', challenges: '', plan: '', hours: '' });
   const [reportMsg, setReportMsg] = useState('');
 
-  const { data, refetch } = useMultiPortalData([
+  const { data } = useMultiPortalData([
     { key: 'metrics',       endpoint: '/api/v1/dashboard/metrics',          fallback: {} },
     { key: 'clients',       endpoint: '/api/v1/clients?status=CLOSED_WON',  fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.data || r.clients || []) },
     { key: 'achievements',  endpoint: '/api/v1/achievements',               fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.data || []) },
@@ -44,6 +44,7 @@ export default function ClientSuccessDashboard({ user, onLogout }: { user: any; 
   const clients = d.clients || [];
   const achievements = d.achievements || [];
   const notifs = d.notifications || [];
+  void notifs; // fetched for future notification panel — not yet rendered
 
   const followUpsToday = clients.filter((c: any) => {
     const next = c.nextFollowUp || c.followUpDate;

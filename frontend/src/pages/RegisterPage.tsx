@@ -140,6 +140,7 @@ export default function RegisterPage() {
       isLoading={isLoading}
       error={error}
       requiresPayout={requiresPayout}
+      defaultEmail={email}
       presetPayout={presetPayout}
     />
   );

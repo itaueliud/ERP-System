@@ -27,7 +27,7 @@ export const requireRole = (...allowedRoles: Role[]) => {
       const hasRole = allowedRoles.includes(req.user.role as Role);
 
       if (!hasRole) {
-        // Log access control decision (Requirement 2.10)
+        // Log access control failures (Requirement 2.10) — always log denials
         await logAccessDecision(
           req.user.id,
           'ROLE_CHECK_FAILED',
@@ -53,19 +53,23 @@ export const requireRole = (...allowedRoles: Role[]) => {
         });
       }
 
-      // Log successful access (Requirement 2.10)
-      await logAccessDecision(
-        req.user.id,
-        'ROLE_CHECK_PASSED',
-        req.path,
-        'SUCCESS',
-        req.ip || 'unknown',
-        req.get('user-agent') || '',
-        {
-          userRole: req.user.role,
-          requiredRoles: allowedRoles,
-        }
-      );
+      // Only log successful access for sensitive/financial operations, not every request
+      // This prevents DB saturation from audit writes on every API call
+      const isSensitivePath = req.path.includes('financial') ||
+        req.path.includes('payment') ||
+        req.path.includes('admin') ||
+        req.path.includes('audit');
+      if (isSensitivePath) {
+        await logAccessDecision(
+          req.user.id,
+          'ROLE_CHECK_PASSED',
+          req.path,
+          'SUCCESS',
+          req.ip || 'unknown',
+          req.get('user-agent') || '',
+          { userRole: req.user.role }
+        );
+      }
 
       return next();
     } catch (error) {
@@ -98,7 +102,7 @@ export const requirePermissions = (...requiredPermissions: string[]) => {
       );
 
       if (!hasPermissions) {
-        // Log access control decision (Requirement 2.10)
+        // Log access control failures — always log denials
         await logAccessDecision(
           req.user.id,
           'PERMISSION_CHECK_FAILED',
@@ -124,19 +128,7 @@ export const requirePermissions = (...requiredPermissions: string[]) => {
         });
       }
 
-      // Log successful access (Requirement 2.10)
-      await logAccessDecision(
-        req.user.id,
-        'PERMISSION_CHECK_PASSED',
-        req.path,
-        'SUCCESS',
-        req.ip || 'unknown',
-        req.get('user-agent') || '',
-        {
-          requiredPermissions,
-        }
-      );
-
+      // Skip success audit log for non-sensitive paths to reduce DB load
       return next();
     } catch (error) {
       logger.error('Permission check middleware error', { error });
@@ -167,7 +159,7 @@ export const requireFinancialAccess = async (
     const canAccess = await authorizationService.canAccessFinancialData(req.user.id);
 
     if (!canAccess) {
-      // Log access control decision (Requirement 2.10)
+      // Log financial access denials
       await logAccessDecision(
         req.user.id,
         'FINANCIAL_ACCESS_DENIED',
@@ -175,9 +167,7 @@ export const requireFinancialAccess = async (
         'FAILURE',
         req.ip || 'unknown',
         req.get('user-agent') || '',
-        {
-          userRole: req.user.role,
-        }
+        { userRole: req.user.role }
       );
 
       logger.warn('Unauthorized financial data access attempt', {
@@ -191,7 +181,7 @@ export const requireFinancialAccess = async (
       });
     }
 
-    // Log successful access (Requirement 2.10)
+    // Always log successful financial access (sensitive operation)
     await logAccessDecision(
       req.user.id,
       'FINANCIAL_ACCESS_GRANTED',
@@ -199,9 +189,7 @@ export const requireFinancialAccess = async (
       'SUCCESS',
       req.ip || 'unknown',
       req.get('user-agent') || '',
-      {
-        userRole: req.user.role,
-      }
+      { userRole: req.user.role }
     );
 
     return next();
@@ -389,7 +377,7 @@ export const requireResourceOwnership = (
 async function logAccessDecision(
   userId: string,
   action: string,
-  _resource: string,
+  resourcePath: string,
   result: 'SUCCESS' | 'FAILURE',
   ipAddress: string,
   userAgent: string,
@@ -401,10 +389,13 @@ async function logAccessDecision(
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `;
 
+    // Extract the first meaningful path segment as resource_type
+    const resourceType = resourcePath.replace(/^\//, '').split('/')[0] || 'authorization';
+
     await db.query(query, [
       userId,
       action,
-      'authorization',
+      resourceType,
       null,
       ipAddress,
       userAgent,

@@ -21,10 +21,73 @@ declare module './useChatSocket' {
   interface ChatMessage {
     readBy?: string[];
     isDeletedForEveryone?: boolean;
+    fileName?: string;
+    fileUrl?: string;
+    mimeType?: string;
   }
 }
 
+// ─── Emoji data ───────────────────────────────────────────────────────────────
+const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
+  { label: 'Smileys', emojis: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
+  { label: 'Gestures', emojis: ['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🫀','🫁','🧠','🦷','🦴','👀','👁️','👅','👄'] },
+  { label: 'Hearts', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️'] },
+  { label: 'Animals', emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕‍🦺','🐈','🐈‍⬛','🪶','🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁','🐀','🐿️','🦔'] },
+  { label: 'Food', emojis: ['🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥮','🍢','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🧃','🥤','🧋','☕','🍵','🫖','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾','🧊','🥄','🍴','🍽️','🥢','🧂'] },
+  { label: 'Activities', emojis: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','⛹️','🤺','🏇','🧘','🏄','🏊','🤽','🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🤹','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🪘','🎷','🎺','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩'] },
+  { label: 'Travel', emojis: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','⛽','🚨','🚥','🚦','🛑','🚧','⚓','🛟','⛵','🚤','🛥️','🛳️','⛴️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🪐','🌍','🌎','🌏','🌐','🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🪨','🪵','🛖','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','♨️','🎠','🛝','🎡','🎢','💈','🎪'] },
+  { label: 'Objects', emojis: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','💽','💾','💿','📀','🧮','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🧭','⏱️','⏲️','⏰','🕰️','⌛','⏳','📡','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💰','💴','💵','💶','💷','💸','💳','🪙','💹','📈','📉','📊','📋','🗒️','🗓️','📆','📅','🗑️','📁','📂','🗂️','🗃️','🗄️','🗑️','📌','📍','✂️','🖊️','🖋️','✒️','🖌️','🖍️','📝','✏️','🔍','🔎','🔏','🔐','🔒','🔓'] },
+];
+
+// ─── EmojiPicker component ────────────────────────────────────────────────────
+function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  return (
+    <div ref={ref} style={{
+      position: 'absolute', bottom: '100%', left: 0, marginBottom: 8,
+      width: 320, height: 340, background: '#fff', borderRadius: 12,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid #e4e9f7',
+      display: 'flex', flexDirection: 'column', zIndex: 100, overflow: 'hidden',
+    }}>
+      {/* Category tabs */}
+      <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '1px solid #e4e9f7', padding: '4px 6px 0', gap: 2, flexShrink: 0 }}>
+        {EMOJI_CATEGORIES.map((cat, i) => (
+          <button key={cat.label} onClick={() => setActiveTab(i)}
+            title={cat.label}
+            style={{ padding: '4px 8px', border: 'none', background: activeTab === i ? '#eef1ff' : 'transparent', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 16, flexShrink: 0, borderBottom: activeTab === i ? '2px solid #4f6ef7' : '2px solid transparent' }}>
+            {cat.emojis[0]}
+          </button>
+        ))}
+      </div>
+      {/* Emoji grid */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexWrap: 'wrap', gap: 2, alignContent: 'flex-start' }}>
+        {EMOJI_CATEGORIES[activeTab].emojis.map(emoji => (
+          <button key={emoji} onClick={() => onSelect(emoji)}
+            style={{ width: 34, height: 34, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.1s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#f0f4ff')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Design tokens ────────────────────────────────────────────────────────────
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '';
+const resolveFileUrl = (url: string) => url.startsWith('http') ? url : `${API_BASE}${url}`;
+
 const C = {
   sidebarBg: '#f0f4ff', sidebarBorder: '#dde3f5',
   chatBg: '#ffffff', rightBg: '#f7f9ff',
@@ -97,6 +160,9 @@ export default function ChatPanel({ token, currentUserId, portal, inlineMode = f
   const [dmError, setDmError] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [menuMsgId, setMenuMsgId] = useState<string | null>(null); // context menu
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [fileUpload, setFileUpload] = useState<{ file: File; uploading: boolean; error: string | null } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Banner: shown when a new message arrives from someone not currently open
   const [newMsgBanner, setNewMsgBanner] = useState<{ name: string; count: number } | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -283,21 +349,65 @@ export default function ChatPanel({ token, currentUserId, portal, inlineMode = f
   }, [joinRoom]);
 
   // ── Send ────────────────────────────────────────────────────────────────────
-  const handleSend = useCallback(() => {
-    if (!input.trim() || !activeConvRef.current) return;
-    sendMessage(activeConvRef.current.roomId, input.trim());
-    // Optimistically add message to UI
+  const handleSend = useCallback(async () => {
+    if (!activeConvRef.current) return;
+    const roomId = activeConvRef.current.roomId;
+
+    // File upload path
+    if (fileUpload?.file && !fileUpload.uploading) {
+      setFileUpload(prev => prev ? { ...prev, uploading: true, error: null } : prev);
+      try {
+        const formData = new FormData();
+        formData.append('file', fileUpload.file);
+        const res = await apiClient.post('/api/v1/chat/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const { fileId, fileName, fileUrl, mimeType } = res.data;
+        const content = input.trim() || fileName;
+        sendMessage(roomId, content, fileId, fileName, mimeType);
+        const optimistic: ChatMessage = {
+          id: `opt-${Date.now()}`, roomId,
+          senderId: currentUserId, content,
+          fileId, fileUrl, fileName, mimeType,
+          createdAt: new Date().toISOString(),
+        };
+        setActiveConv(prev => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev);
+        setConversations(prev => prev.map(c =>
+          c.roomId === roomId ? { ...c, messages: [...c.messages, optimistic] } : c
+        ));
+        setInput('');
+        setFileUpload(null);
+      } catch (err: any) {
+        setFileUpload(prev => prev ? { ...prev, uploading: false, error: err?.response?.data?.error || 'Upload failed' } : prev);
+      }
+      return;
+    }
+
+    if (!input.trim()) return;
+    sendMessage(roomId, input.trim());
     const optimistic: ChatMessage = {
-      id: `opt-${Date.now()}`, roomId: activeConvRef.current.roomId,
+      id: `opt-${Date.now()}`, roomId,
       senderId: currentUserId, content: input.trim(),
       fileId: null, createdAt: new Date().toISOString(),
     };
     setActiveConv(prev => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev);
     setConversations(prev => prev.map(c =>
-      c.roomId === activeConvRef.current?.roomId ? { ...c, messages: [...c.messages, optimistic] } : c
+      c.roomId === roomId ? { ...c, messages: [...c.messages, optimistic] } : c
     ));
     setInput('');
-  }, [input, currentUserId, sendMessage]);
+  }, [input, currentUserId, sendMessage, fileUpload]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setFileUpload({ file, uploading: false, error: 'File exceeds the 5 MB limit' });
+      return;
+    }
+    setFileUpload({ file, uploading: false, error: null });
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -684,7 +794,7 @@ export default function ChatPanel({ token, currentUserId, portal, inlineMode = f
                     <div
                       onContextMenu={e => { e.preventDefault(); setMenuMsgId(isMenuOpen ? null : msg.id); }}
                       style={{
-                        padding: isDeleted ? '7px 12px' : '7px 12px 4px',
+                        padding: isDeleted ? '7px 12px' : (msg.fileId && !msg.content) ? '4px' : '7px 12px 4px',
                         borderRadius: isMine ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
                         background: isDeleted ? '#f0f0f0' : isMine ? '#dcf8c6' : '#ffffff',
                         color: isDeleted ? '#999' : '#1a1a1a',
@@ -702,7 +812,78 @@ export default function ChatPanel({ token, currentUserId, portal, inlineMode = f
                         </p>
                       ) : (
                         <>
-                          <p style={{ margin: '0 0 2px' }}>{msg.content}</p>
+                          {/* File attachment */}
+                          {msg.fileId && msg.fileUrl && (
+                            <div style={{ marginBottom: msg.content && !msg.fileId ? 0 : 2 }}>
+                              {msg.mimeType?.startsWith('image/') ? (
+                                // WhatsApp-style image — full bubble width, rounded, clickable
+                                <img
+                                  src={resolveFileUrl(msg.fileUrl)}
+                                  alt={msg.fileName || 'image'}
+                                  style={{
+                                    display: 'block',
+                                    width: '100%',
+                                    maxWidth: 280,
+                                    minWidth: 160,
+                                    borderRadius: 8,
+                                    cursor: 'pointer',
+                                    objectFit: 'cover',
+                                  }}
+                                  onClick={() => window.open(resolveFileUrl(msg.fileUrl!), '_blank')}
+                                  onError={e => {
+                                    // Fallback to download link if image fails
+                                    const el = e.currentTarget;
+                                    el.style.display = 'none';
+                                    const link = document.createElement('a');
+                                    link.href = resolveFileUrl(msg.fileUrl!);
+                                    link.textContent = msg.fileName || 'Download image';
+                                    link.target = '_blank';
+                                    el.parentElement?.appendChild(link);
+                                  }}
+                                />
+                              ) : msg.mimeType?.startsWith('video/') ? (
+                                <video
+                                  src={resolveFileUrl(msg.fileUrl)}
+                                  controls
+                                  style={{ display: 'block', width: '100%', maxWidth: 280, borderRadius: 8 }}
+                                />
+                              ) : (
+                                // File download card
+                                <a
+                                  href={resolveFileUrl(msg.fileUrl)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '8px 10px',
+                                    background: isMine ? 'rgba(0,0,0,0.12)' : '#f0f4ff',
+                                    borderRadius: 8, textDecoration: 'none',
+                                    color: isMine ? '#fff' : '#1e2a4a',
+                                    minWidth: 160, maxWidth: 260,
+                                  }}
+                                >
+                                  <div style={{
+                                    width: 32, height: 32, borderRadius: 6, flexShrink: 0,
+                                    background: isMine ? 'rgba(255,255,255,0.2)' : C.accent,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  }}>
+                                    <svg width="16" height="16" fill="none" stroke={isMine ? '#fff' : '#fff'} viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                                    </svg>
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {msg.fileName || 'Download file'}
+                                    </p>
+                                    <p style={{ margin: 0, fontSize: 10, opacity: 0.7 }}>
+                                      {msg.mimeType?.split('/')[1]?.toUpperCase() || 'FILE'}
+                                    </p>
+                                  </div>
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          <p style={{ margin: '0 0 2px' }}>{msg.fileId && !msg.content ? null : msg.content}</p>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                             <span style={{ fontSize: 10, color: '#7a9a7a' }}>
                               {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -810,16 +991,62 @@ export default function ChatPanel({ token, currentUserId, portal, inlineMode = f
           <div ref={messagesEndRef} />
         </div>
         {/* Input */}
-        <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, background: '#fff' }}>
-          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder="Write Something..."
-            style={{ flex: 1, padding: '10px 16px', borderRadius: 24, border: `1px solid ${C.border}`, fontSize: 13, outline: 'none', background: '#f7f9ff', color: C.textPrimary }} />
-          <button onClick={handleSend} disabled={!input.trim()}
-            style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: input.trim() ? C.accent : C.border, color: '#fff', cursor: input.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s', boxShadow: input.trim() ? '0 2px 8px rgba(79,110,247,0.35)' : 'none' }}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-          </button>
+        <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, background: '#fff' }}>
+          {/* File preview */}
+          {fileUpload && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', marginBottom: 8, background: '#f0f4ff', borderRadius: 10, fontSize: 12 }}>
+              <svg width="14" height="14" fill="none" stroke={C.accent} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+              <span style={{ flex: 1, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fileUpload.file.name}</span>
+              <span style={{ color: C.textMuted, flexShrink: 0 }}>{(fileUpload.file.size / 1024).toFixed(0)} KB</span>
+              {fileUpload.error && <span style={{ color: '#dc2626', flexShrink: 0 }}>{fileUpload.error}</span>}
+              {!fileUpload.uploading && (
+                <button onClick={() => setFileUpload(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: 2, display: 'flex' }}>
+                  <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
+            {/* Emoji button */}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowEmoji(v => !v)}
+                title="Emoji"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, fontSize: 20, display: 'flex', alignItems: 'center', color: showEmoji ? C.accent : C.textMuted, transition: 'color 0.15s' }}>
+                😊
+              </button>
+              {showEmoji && (
+                <EmojiPicker
+                  onSelect={emoji => { setInput(prev => prev + emoji); setShowEmoji(false); }}
+                  onClose={() => setShowEmoji(false)}
+                />
+              )}
+            </div>
+            {/* File attach button */}
+            <button onClick={() => fileInputRef.current?.click()}
+              title="Attach file (max 5 MB)"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', color: fileUpload ? C.accent : C.textMuted, transition: 'color 0.15s' }}>
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+            <input ref={fileInputRef} type="file" style={{ display: 'none' }}
+              accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.mp4,.mp3"
+              onChange={handleFileSelect} />
+            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
+              placeholder={fileUpload ? 'Add a caption…' : 'Write Something...'}
+              style={{ flex: 1, padding: '10px 16px', borderRadius: 24, border: `1px solid ${C.border}`, fontSize: 13, outline: 'none', background: '#f7f9ff', color: C.textPrimary }} />
+            <button onClick={handleSend}
+              disabled={(!input.trim() && !fileUpload) || fileUpload?.uploading}
+              style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: (input.trim() || fileUpload) && !fileUpload?.uploading ? C.accent : C.border, color: '#fff', cursor: (input.trim() || fileUpload) && !fileUpload?.uploading ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s', boxShadow: (input.trim() || fileUpload) && !fileUpload?.uploading ? '0 2px 8px rgba(79,110,247,0.35)' : 'none' }}>
+              {fileUpload?.uploading ? (
+                <svg style={{ animation: 'spin 0.8s linear infinite' }} width="16" height="16" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#fff" strokeWidth="3" strokeDasharray="40 20" /></svg>
+              ) : (
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     );

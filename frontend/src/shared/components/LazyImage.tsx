@@ -5,7 +5,7 @@
  * Also accepts an optional `cdnBase` prop so callers can prefix the src with
  * the CDN origin without changing every call site (Req 37.6).
  */
-import React, { useRef, useState, useEffect, ImgHTMLAttributes } from 'react';
+import { useRef, useState, useEffect, ImgHTMLAttributes } from 'react';
 
 interface LazyImageProps extends ImgHTMLAttributes<HTMLImageElement> {
   src: string;

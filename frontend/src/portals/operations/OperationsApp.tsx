@@ -5,7 +5,7 @@ import { RealtimeProvider } from '../../shared/utils/RealtimeContext';
 import OperationsPortal from './index';
 import OperationsLoginPage from './OperationsLoginPage';
 
-const ALLOWED_ROLES = ['OPERATIONS_USER', 'HEAD_OF_TRAINERS', 'TRAINER', 'SALES_MANAGER', 'CLIENT_SUCCESS_USER', 'ACCOUNT_EXECUTIVE', 'SENIOR_ACCOUNT_MANAGER', 'MARKETING_USER', 'MARKETING_OFFICER'];
+const ALLOWED_ROLES = ['OPERATIONS_USER', 'HEAD_OF_TRAINERS', 'TRAINER', 'COO'];
 
 export default function OperationsApp() {
   return (

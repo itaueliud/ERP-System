@@ -3,6 +3,32 @@ import { chatService, RoomType, MAX_FILE_SIZE_BYTES } from './chatService';
 import { chatServer } from './chatServer';
 import { authService } from '../auth/authService';
 import logger from '../utils/logger';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
+// ─── File upload setup ────────────────────────────────────────────────────────
+const uploadDir = path.join(process.cwd(), 'uploads', 'chat');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    cb(null, `${unique}${path.extname(file.originalname)}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    // Allow common file types
+    const allowed = /\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|txt|zip|mp4|mp3)$/i;
+    if (allowed.test(file.originalname)) cb(null, true);
+    else cb(new Error('File type not allowed'));
+  },
+});
 
 /**
  * Chat REST API routes
@@ -268,7 +294,7 @@ router.post(
       const { roomId } = req.params;
       const senderId = (req as any).user?.id;
       const userRole = (req as any).user?.role;
-      const { content, fileId, fileSizeBytes } = req.body;
+      const { content, fileId, fileSizeBytes, fileName, mimeType } = req.body;
 
       // doc §18: Agents have no chat access
       if (userRole === 'AGENT') {
@@ -300,7 +326,7 @@ router.post(
         return res.status(404).json({ error: 'Room not found' });
       }
 
-      const message = await chatService.sendMessage(roomId, senderId, content, fileId);
+      const message = await chatService.sendMessage(roomId, senderId, content, fileId, fileName, mimeType);
 
       // Emit via Socket.IO to room members (Requirement 13.4)
       chatServer.emitToRoom(roomId, 'message:new', message);
@@ -734,6 +760,41 @@ router.get('/users', authenticate as any, async (req: Request, res: Response) =>
     logger.error('Error fetching chat users', { error });
     return res.status(500).json({ error: 'Failed to fetch users' });
   }
+});
+
+/**
+ * POST /api/chat/upload
+ * Upload a file attachment (max 5 MB).
+ */
+router.post('/upload', authenticate as any, (req: Request, res: Response) => {
+  upload.single('file')(req, res, (err: any) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: `File exceeds the 5 MB limit` });
+      }
+      return res.status(400).json({ error: err.message || 'Upload failed' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file provided' });
+
+    const fileUrl = `/api/v1/chat/files/${req.file.filename}`;
+    return res.status(201).json({
+      fileId: req.file.filename,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      fileUrl,
+      mimeType: req.file.mimetype,
+    });
+  });
+});
+
+/**
+ * GET /api/chat/files/:filename
+ * Serve an uploaded chat file.
+ */
+router.get('/files/:filename', authenticate as any, (req: Request, res: Response): void => {
+  const filePath = path.join(uploadDir, req.params.filename);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found' }); return; }
+  res.sendFile(filePath);
 });
 
 export default router;

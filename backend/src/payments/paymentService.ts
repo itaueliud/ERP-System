@@ -10,6 +10,7 @@ export interface InitiatePaymentInput {
   description?: string;
   clientId?: string;
   projectId?: string;
+  propertyId?: string; // TST PlotConnect property payment
 }
 
 export interface MpesaPaymentInput extends InitiatePaymentInput {
@@ -116,12 +117,15 @@ export class PaymentProcessingService {
 
       const payment = await this.recordPayment({
         transactionId: darajaResponse.transactionId || darajaResponse.requestId,
+        // For STK Push, transactionId IS the CheckoutRequestID used for webhook matching
+        checkoutRequestId: darajaResponse.transactionId || undefined,
         amount: input.amount,
         currency: input.currency,
         paymentMethod: PaymentMethod.MPESA,
         status: darajaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
         clientId: input.clientId,
         projectId: input.projectId,
+        propertyId: (input as any).propertyId,
         errorCode: darajaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
         errorMessage: darajaResponse.status === 'FAILED' ? darajaResponse.message : undefined,
       });
@@ -241,44 +245,41 @@ export class PaymentProcessingService {
   /**
    * Initiate card payment (Visa/Mastercard)
    * Requirement 5.5: Support Visa and Mastercard payments
-   * Requirement 5.6: Send payment request to Daraja API
+   * NOTE: Card data is never logged. Only non-sensitive metadata is recorded.
    */
   async initiateCardPayment(input: CardPaymentInput): Promise<Payment> {
+    // Destructure card fields out so they are never passed to the logger
+    const { cardNumber, expiryMonth, expiryYear, cvv, ...safeInput } = input;
+
     try {
       logger.info('Initiating card payment', {
-        cardholderName: input.cardholderName,
-        amount: input.amount,
-        reference: input.reference,
+        cardholderName: safeInput.cardholderName,
+        amount: safeInput.amount,
+        reference: safeInput.reference,
       });
 
-      if (input.amount <= 0) throw new Error('Payment amount must be greater than 0');
-      if (!input.cardNumber || !input.expiryMonth || !input.expiryYear || !input.cvv) {
+      if (safeInput.amount <= 0) throw new Error('Payment amount must be greater than 0');
+      if (!cardNumber || !expiryMonth || !expiryYear || !cvv) {
         throw new Error('Complete card details are required');
       }
 
-      const cardType = this.determineCardType(input.cardNumber);
+      const cardType = this.determineCardType(cardNumber);
 
       const darajaResponse = await darajaClient.initiateCardPayment(
-        {
-          cardNumber: input.cardNumber,
-          expiryMonth: input.expiryMonth,
-          expiryYear: input.expiryYear,
-          cvv: input.cvv,
-          cardholderName: input.cardholderName,
-        },
-        input.amount,
-        input.currency,
-        input.reference
+        { cardNumber, expiryMonth, expiryYear, cvv, cardholderName: safeInput.cardholderName },
+        safeInput.amount,
+        safeInput.currency,
+        safeInput.reference
       );
 
       const payment = await this.recordPayment({
         transactionId: darajaResponse.transactionId || darajaResponse.requestId,
-        amount: input.amount,
-        currency: input.currency,
+        amount: safeInput.amount,
+        currency: safeInput.currency,
         paymentMethod: cardType,
         status: darajaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
-        clientId: input.clientId,
-        projectId: input.projectId,
+        clientId: safeInput.clientId,
+        projectId: safeInput.projectId,
         errorCode: darajaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
         errorMessage: darajaResponse.status === 'FAILED' ? darajaResponse.message : undefined,
       });
@@ -292,7 +293,12 @@ export class PaymentProcessingService {
 
       return payment;
     } catch (error) {
-      logger.error('Failed to initiate card payment', { error, input });
+      // Never log `input` — it contains raw card data
+      logger.error('Failed to initiate card payment', {
+        error,
+        amount: safeInput.amount,
+        reference: safeInput.reference,
+      });
       throw error;
     }
   }
@@ -309,26 +315,32 @@ export class PaymentProcessingService {
     status: PaymentStatus;
     clientId?: string;
     projectId?: string;
+    propertyId?: string;
     errorCode?: string;
     errorMessage?: string;
+    checkoutRequestId?: string;
   }): Promise<Payment> {
     try {
+      // checkout_request_id is the Daraja STK Push CheckoutRequestID (only for M-Pesa STK).
+      // For other payment methods it is NULL to avoid misleading lookups.
       const result = await db.query(
         `INSERT INTO payments (
-          transaction_id, amount, currency, payment_method, status,
-          client_id, project_id, error_code, error_message
+          transaction_id, checkout_request_id, amount, currency, payment_method, status,
+          client_id, project_id, property_id, error_code, error_message
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id, transaction_id, amount, currency, payment_method, status,
-                  client_id, project_id, error_code, error_message, created_at`,
+                  client_id, project_id, property_id, error_code, error_message, created_at`,
         [
           data.transactionId,
+          data.checkoutRequestId || null,
           data.amount,
           data.currency,
           data.paymentMethod,
           data.status,
           data.clientId || null,
           data.projectId || null,
+          data.propertyId || null,
           data.errorCode || null,
           data.errorMessage || null,
         ]
@@ -374,7 +386,11 @@ export class PaymentProcessingService {
    */
   async handleWebhook(signature: string, payload: any): Promise<void> {
     try {
-      logger.info('Received Daraja API webhook', { payload });
+      logger.info('Received Daraja API webhook', {
+        hasBody: !!payload?.Body,
+        hasStkCallback: !!payload?.Body?.stkCallback,
+        hasResult: !!payload?.Body?.Result,
+      });
 
       // Verify webhook signature
       const isValid = darajaClient.verifyWebhookSignature(signature, JSON.stringify(payload));
@@ -418,28 +434,80 @@ export class PaymentProcessingService {
 
       const paymentStatus = status === 'COMPLETED' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
 
-      await db.query(
-        `UPDATE payments SET status = $1, error_code = $2, error_message = $3 WHERE transaction_id = $4`,
+      // Idempotent update — only proceed with side-effects if the row was actually changed
+      const updateResult = await db.query(
+        `UPDATE payments SET status = $1, error_code = $2, error_message = $3
+         WHERE transaction_id = $4 AND status != $1
+         RETURNING id`,
         [paymentStatus, errorCode, errorMessage, transactionId]
       );
 
       logger.info('Payment status updated from Daraja webhook', { transactionId, status: paymentStatus });
 
-      // If payment is successful and linked to a client, activate or qualify the lead
-      // based on their payment plan (doc §10):
-      //   FULL_PAYMENT → LEAD_ACTIVATED
-      //   50_50 / MILESTONE → LEAD_QUALIFIED
-      if (paymentStatus === PaymentStatus.COMPLETED) {
-        const paymentResult = await db.query(
-          `SELECT p.client_id, c.payment_plan
-           FROM payments p
-           JOIN clients c ON c.id = p.client_id
-           WHERE p.transaction_id = $1 AND p.client_id IS NOT NULL`,
+      // Only trigger downstream effects if this is the first time we're marking it COMPLETED
+      if (paymentStatus !== PaymentStatus.COMPLETED || updateResult.rowCount === 0) {
+        return;
+      }
+
+      const paymentResult = await db.query(
+        `SELECT p.client_id, p.property_id, c.payment_plan
+         FROM payments p
+         LEFT JOIN clients c ON c.id = p.client_id
+         WHERE p.transaction_id = $1`,
+        [transactionId]
+      );
+
+      // Also try to resolve property via marketer_properties.checkout_request_id
+      // in case the payments row didn't have property_id set
+      let propertyId = paymentResult.rows[0]?.property_id || null;
+      if (!propertyId) {
+        const mpRow = await db.query(
+          `SELECT id FROM marketer_properties WHERE checkout_request_id = $1`,
           [transactionId]
         );
+        if (mpRow.rows.length) propertyId = mpRow.rows[0].id;
+      }
 
-        if (paymentResult.rows.length > 0) {
-          const { client_id: clientId, payment_plan: paymentPlan } = paymentResult.rows[0];
+      if (paymentResult.rows.length > 0 || propertyId) {
+        const { client_id: clientId, payment_plan: paymentPlan } = paymentResult.rows[0] || {};
+        const resolvedPropertyId = propertyId;
+
+        // Update marketer_properties payment status if this is a PlotConnect payment
+        if (resolvedPropertyId) {
+          await db.query(
+            `UPDATE marketer_properties
+             SET payment_status = 'PAID', payment_confirmed_at = NOW(), updated_at = NOW()
+             WHERE id = $1`,
+            [resolvedPropertyId]
+          ).catch(err => logger.error('Failed to update marketer_properties payment status', { err, resolvedPropertyId }));
+
+          // Auto-publish if already approved
+          await db.query(
+            `UPDATE marketer_properties
+             SET status = 'PUBLISHED', updated_at = NOW()
+             WHERE id = $1 AND status = 'APPROVED'`,
+            [resolvedPropertyId]
+          ).catch(() => {});
+
+          // Notify COO and CEO
+          await db.query(
+            `INSERT INTO notifications (user_id, title, message, type, created_at)
+             SELECT u.id,
+                    'PlotConnect Payment Confirmed',
+                    (SELECT 'Property "' || property_name || '" payment confirmed — now live.'
+                     FROM marketer_properties WHERE id = $1),
+                    'NEW_PLOTCONNECT_PROPERTY',
+                    NOW()
+             FROM users u
+             WHERE u.role IN ('COO','CEO')`,
+            [resolvedPropertyId]
+          ).catch(() => {});
+
+          logger.info('marketer_properties payment confirmed', { resolvedPropertyId, transactionId });
+        }
+
+        // Update client lead status if linked to a client
+        if (clientId) {
           const { clientService } = await import('../clients/clientService');
           try {
             if (paymentPlan === 'FULL') {
@@ -455,7 +523,7 @@ export class PaymentProcessingService {
         }
       }
     } catch (error) {
-      logger.error('Failed to handle Daraja webhook', { error, payload });
+      logger.error('Failed to handle Daraja webhook', { error: (error as any)?.message });
       throw error;
     }
   }
@@ -822,27 +890,12 @@ export class PaymentProcessingService {
             throw new Error('Invalid payment method');
         }
       } catch (gatewayErr: any) {
-        // Gateway not configured or missing details — record as COMPLETED internally
-        logger.warn('Payment gateway unavailable, recording execution internally', {
-          approvalId, reason: gatewayErr.message,
+        // Gateway error — propagate so the caller knows execution failed.
+        // Never silently mark a payment as COMPLETED when the gateway has not confirmed it.
+        logger.error('Payment gateway error during execution', {
+          approvalId, reason: (gatewayErr as any).message,
         });
-        const txId = `INTERNAL-${Date.now()}`;
-        const fallbackResult = await db.query(
-          `INSERT INTO payments (transaction_id, amount, currency, payment_method, status, project_id, created_at)
-           VALUES ($1, $2, $3, $4, 'COMPLETED', $5, NOW())
-           RETURNING id, transaction_id, amount, currency, payment_method, status, project_id, created_at`,
-          [txId, approval.amount, currency, paymentDetails.paymentMethod, approval.projectId]
-        );
-        payment = {
-          id: fallbackResult.rows[0].id,
-          transactionId: txId,
-          amount: approval.amount,
-          currency,
-          paymentMethod: paymentDetails.paymentMethod as any,
-          status: 'COMPLETED' as any,
-          projectId: approval.projectId,
-          createdAt: fallbackResult.rows[0].created_at,
-        } as any;
+        throw gatewayErr;
       }
 
       // Update approval status

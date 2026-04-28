@@ -1,4 +1,3 @@
-import React from 'react';
 
 export interface LiveRegionProps {
   /** The message to announce to screen readers. */

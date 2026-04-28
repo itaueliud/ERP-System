@@ -56,7 +56,21 @@ export const config = {
   jwt: {
     secret: process.env.JWT_SECRET!,
     expiresIn: process.env.JWT_EXPIRES_IN || '8h',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET!,
+    refreshSecret: (() => {
+      if (!process.env.JWT_REFRESH_SECRET) {
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error('JWT_REFRESH_SECRET must be set in production — it must differ from JWT_SECRET');
+        }
+        // Dev/staging: warn loudly — secrets should always differ
+        console.warn('[WARN] JWT_REFRESH_SECRET not set — falling back to JWT_SECRET. This is insecure; set a separate secret in all environments.');
+      } else if (process.env.JWT_REFRESH_SECRET === process.env.JWT_SECRET) {
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error('JWT_REFRESH_SECRET must differ from JWT_SECRET in production');
+        }
+        console.warn('[WARN] JWT_REFRESH_SECRET equals JWT_SECRET — use a different secret for refresh tokens.');
+      }
+      return process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET!;
+    })(),
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },
 
@@ -124,7 +138,12 @@ export const config = {
   // Security Configuration
   security: {
     bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12', 10),
-    sessionSecret: process.env.SESSION_SECRET || process.env.JWT_SECRET!,
+    sessionSecret: (() => {
+      if (!process.env.SESSION_SECRET) {
+        console.warn('[WARN] SESSION_SECRET not set — falling back to JWT_SECRET. Set a separate SESSION_SECRET for cookie signing.');
+      }
+      return process.env.SESSION_SECRET || process.env.JWT_SECRET!;
+    })(),
     corsOrigin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim()),
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
     rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),

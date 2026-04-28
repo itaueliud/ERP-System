@@ -3,7 +3,6 @@
  * These tests MUST FAIL on unfixed code (failure confirms bugs exist).
  * After fixes are applied, they MUST PASS.
  */
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 

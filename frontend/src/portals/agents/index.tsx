@@ -4,10 +4,9 @@ import { PortalLayout, StatCard, SectionHeader, DataTable, StatusBadge, PortalBu
 import { PORTAL_THEMES } from '../../shared/theme/portalThemes';
 import { useAuth } from '../../shared/components/auth/AuthContext';
 import { useMultiPortalData } from '../../shared/utils/usePortalData';
-import { AFRICAN_COUNTRIES, COUNTRIES_BY_REGION, AFRICAN_REGIONS, getCurrencyForCountry } from '../../shared/utils/africanCountries';
-import ChatPanel from '../../shared/components/chat/ChatPanel';
 import { SandboxBanner } from '../../shared/components/payments/SandboxBanner';
 import { AGENTS_FAQS } from '../../shared/data/portalFAQs';
+import MarketerDashboard from './components/MarketerDashboard';
 
 const theme = PORTAL_THEMES.agents;
 
@@ -32,16 +31,88 @@ function clientStatusLabel(status: string): string {
   return STATUS_LABELS[status] || status;
 }
 
-// ─── Industry services map ────────────────────────────────────────────────────
-const INDUSTRY_SERVICES: Record<string, string[]> = {
-  SCHOOLS:     ['School Portal / LMS', 'Fee Management System', 'Custom Website'],
-  CHURCHES:    ['Member Management System', 'Online Giving System', 'Custom Website'],
-  HOTELS:      ['Booking System', 'Room Management System', 'Hotel Billing System', 'Custom Website'],
-  HOSPITALS:   ['Patient Management System', 'Appointment Booking System', 'Pharmacy Stock System', 'Custom Website'],
-  COMPANIES:   ['HR & Payroll System', 'CRM System', 'Inventory Management System', 'Custom Website'],
-  REAL_ESTATE: ['Rent Management System', 'Property Listing Platform', 'Tenant Management System', 'Custom Website'],
-  SHOPS:       ['POS System', 'E-commerce Website', 'Inventory System', 'Custom Website'],
-};
+// ─── Categorised software catalogue ──────────────────────────────────────────
+const SOFTWARE_CATALOGUE = [
+  {
+    category: 'Education',
+    icon: '🎓',
+    items: [
+      { name: 'School Portal / LMS',     desc: 'Learning management, student portals & e-learning' },
+      { name: 'Fee Management System',    desc: 'Fee collection, receipts & arrears tracking' },
+      { name: 'Exam & Results System',    desc: 'Online exams, grading & report cards' },
+      { name: 'Library Management',       desc: 'Book catalogue, borrowing & returns' },
+    ],
+  },
+  {
+    category: 'Church / Religious',
+    icon: '⛪',
+    items: [
+      { name: 'Member Management System', desc: 'Member records, attendance & groups' },
+      { name: 'Online Giving System',     desc: 'Digital tithes, offerings & donation tracking' },
+      { name: 'Event Management',         desc: 'Church events, registrations & reminders' },
+    ],
+  },
+  {
+    category: 'Hospitality',
+    icon: '🏨',
+    items: [
+      { name: 'Hotel Booking System',     desc: 'Online reservations, room availability & check-in' },
+      { name: 'Room Management System',   desc: 'Room allocation, housekeeping & occupancy' },
+      { name: 'Hotel Billing System',     desc: 'Guest invoicing, POS & payment reconciliation' },
+      { name: 'Restaurant POS',           desc: 'Table orders, kitchen display & billing' },
+    ],
+  },
+  {
+    category: 'Healthcare',
+    icon: '🏥',
+    items: [
+      { name: 'Patient Management System',    desc: 'Patient records, visits & medical history' },
+      { name: 'Appointment Booking System',   desc: 'Doctor scheduling, reminders & queue management' },
+      { name: 'Pharmacy Stock System',        desc: 'Drug inventory, dispensing & expiry tracking' },
+      { name: 'Lab Results System',           desc: 'Lab tests, results & patient notifications' },
+    ],
+  },
+  {
+    category: 'Business / Corporate',
+    icon: '🏢',
+    items: [
+      { name: 'HR & Payroll System',          desc: 'Staff records, payroll, leave & payslips' },
+      { name: 'CRM System',                   desc: 'Customer pipeline, follow-ups & sales tracking' },
+      { name: 'Inventory Management System',  desc: 'Stock control, purchase orders & suppliers' },
+      { name: 'Accounting System',            desc: 'Invoicing, expenses, P&L & financial reports' },
+      { name: 'Project Management System',    desc: 'Tasks, milestones, teams & progress tracking' },
+    ],
+  },
+  {
+    category: 'Real Estate',
+    icon: '🏠',
+    items: [
+      { name: 'Rent Management System',       desc: 'Tenant records, rent collection & lease tracking' },
+      { name: 'Property Listing Platform',    desc: 'Online listings with search & enquiries' },
+      { name: 'Tenant Management System',     desc: 'Onboarding, maintenance requests & payments' },
+      { name: 'Caretaker / Agent Portal',     desc: 'Agent dashboards, commissions & reporting' },
+    ],
+  },
+  {
+    category: 'Retail / E-commerce',
+    icon: '🛒',
+    items: [
+      { name: 'POS System',                   desc: 'Point-of-sale for shops & restaurants' },
+      { name: 'E-commerce Website',           desc: 'Online store with cart, payments & orders' },
+      { name: 'Inventory System',             desc: 'Stock levels, reorder alerts & supplier orders' },
+      { name: 'Loyalty & Rewards System',     desc: 'Customer points, vouchers & retention' },
+    ],
+  },
+  {
+    category: 'Web & Digital',
+    icon: '🌐',
+    items: [
+      { name: 'Custom Website',               desc: 'Branded website tailored to your business' },
+      { name: 'Mobile App',                   desc: 'Android / iOS app for your business' },
+      { name: 'Digital Marketing Dashboard',  desc: 'Campaign tracking, leads & analytics' },
+    ],
+  },
+];
 
 const PLAN_AMOUNTS: Record<string, number> = { FULL: 500, '50_50': 750, MILESTONE: 1000 };
 const PLAN_LABELS: Record<string, string> = {
@@ -72,15 +143,75 @@ function StepIndicator({ step }: { step: 1 | 2 | '3a' | '3b' }) {
   );
 }
 
+// ─── Software Category Accordion ─────────────────────────────────────────────
+function SoftwareCategoryAccordion({ category, icon, items, selected, themeHex, onToggle }: {
+  category: string; icon: string;
+  items: { name: string; desc: string }[];
+  selected: string[]; themeHex: string;
+  onToggle: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const catCount = items.filter(i => selected.includes(i.name)).length;
+
+  return (
+    <div className={`rounded-xl border-2 overflow-hidden transition-all ${catCount > 0 ? 'border-current' : 'border-gray-200'}`}
+      style={catCount > 0 ? { borderColor: themeHex } : {}}>
+      <button type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{icon}</span>
+          <span className="text-sm font-semibold text-gray-800">{category}</span>
+          {catCount > 0 && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+              style={{ backgroundColor: themeHex }}>
+              {catCount} selected
+            </span>
+          )}
+        </div>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="border-t border-gray-100 divide-y divide-gray-50">
+          {items.map(item => {
+            const sel = selected.includes(item.name);
+            return (
+              <button type="button" key={item.name}
+                onClick={() => onToggle(item.name)}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${sel ? 'bg-opacity-5' : 'hover:bg-gray-50'}`}
+                style={sel ? { backgroundColor: themeHex + '10' } : {}}>
+                <span className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${sel ? 'border-current' : 'border-gray-300'}`}
+                  style={sel ? { borderColor: themeHex, backgroundColor: themeHex } : {}}>
+                  {sel && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>}
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{item.name}</p>
+                  <p className="text-xs text-gray-400">{item.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Capture Wizard ───────────────────────────────────────────────────────────
 function CaptureWizard({ themeHex, onClientSaved }: { themeHex: string; onClientSaved?: () => void }) {
   const [captureStep, setCaptureStep] = useState<1 | 2 | '3a' | '3b'>(1);
   const [captureProduct, setCaptureProduct] = useState<'SYSTEM' | 'PLOTCONNECT' | null>(null);
   const [captureInfo, setCaptureInfo] = useState({ clientName: '', organizationName: '', phone: '', email: '', location: '', notes: '' });
-  const [captureIndustry, setCaptureIndustry] = useState('');
+  const [captureIndustry, _setCaptureIndustry] = useState(''); // kept for backend compatibility
   const [captureServices, setCaptureServices] = useState<string[]>([]);
   const [capturePlan, setCapturePlan] = useState<'FULL' | '50_50' | 'MILESTONE'>('FULL');
   const [captureMpesa, setCaptureMpesa] = useState('');
+  const [captureCommitment, setCaptureCommitment] = useState('500'); // editable commitment amount
   const [capturePropType, setCapturePropType] = useState<'STUDENT' | 'OTHERS'>('STUDENT');
   const [capturePropForm, setCapturePropForm] = useState({ propertyName: '', location: '', numberOfRooms: '', pricePerRoom: '', contactPerson: '', numberOfUnits: '', stayType: 'Monthly', description: '', websiteLink: '' });
   const [capturePlacementTier, setCapturePlacementTier] = useState<'TOP' | 'MEDIUM' | 'BASIC'>('BASIC');
@@ -99,35 +230,53 @@ function CaptureWizard({ themeHex, onClientSaved }: { themeHex: string; onClient
       return;
     }
     setCaptureMsg('');
-    setCaptureStep(2);
+    // Only one product (SYSTEM) — skip product selection step
+    setCaptureProduct('SYSTEM');
+    setCaptureStep('3a');
   };
 
   const handleProductSelect = (p: 'SYSTEM' | 'PLOTCONNECT') => {
     setCaptureProduct(p);
-    setCaptureStep(p === 'SYSTEM' ? '3a' : '3b');
+    // Only SYSTEM remains — skip step 2 and go straight to details
+    setCaptureStep('3a');
   };
 
   const handleSystemSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Pre-submit validation
     if (!captureInfo.clientName.trim()) { setCaptureMsg('Client name is required.'); setCaptureSuccess(false); return; }
     if (!captureInfo.phone.trim())      { setCaptureMsg('Phone number is required.'); setCaptureSuccess(false); return; }
     if (!captureInfo.email.trim())      { setCaptureMsg('Email is required.'); setCaptureSuccess(false); return; }
-    if (!captureIndustry)               { setCaptureMsg('Please select an industry.'); setCaptureSuccess(false); return; }
-    if (captureServices.length === 0)   { setCaptureMsg('Please select at least one service.'); setCaptureSuccess(false); return; }
+    if (captureServices.length === 0)   { setCaptureMsg('Please select at least one system.'); setCaptureSuccess(false); return; }
     if (!captureMpesa.trim())           { setCaptureMsg('M-Pesa number is required.'); setCaptureSuccess(false); return; }
 
     setCaptureSubmitting(true);
     setCaptureMsg('');
     try {
       const { apiClient } = await import('../../shared/api/apiClient');
-      const commitmentAmount = PLAN_AMOUNTS[capturePlan];
+      const commitmentAmount = parseFloat(captureCommitment) || PLAN_AMOUNTS[capturePlan];
       // Get agent's country from their profile (spec §7: country inherited from trainer's assignment)
       let agentCountry = 'Kenya'; // default fallback
       try {
         const profileRes = await apiClient.get('/api/v1/users/me');
         agentCountry = (profileRes.data as any)?.data?.country || (profileRes.data as any)?.country || 'Kenya';
       } catch { /* use default */ }
+
+      // Derive industryCategory from whichever catalogue category has the most selected items
+      const CATEGORY_MAP: Record<string, string> = {
+        'Education':          'SCHOOLS',
+        'Church / Religious': 'CHURCHES',
+        'Hospitality':        'HOTELS',
+        'Healthcare':         'HOSPITALS',
+        'Business / Corporate': 'COMPANIES',
+        'Real Estate':        'REAL_ESTATE',
+        'Retail / E-commerce': 'SHOPS',
+        'Web & Digital':      'COMPANIES',
+      };
+      const bestCat = SOFTWARE_CATALOGUE.reduce((best, cat) => {
+        const count = cat.items.filter(i => captureServices.includes(i.name)).length;
+        return count > best.count ? { name: cat.category, count } : best;
+      }, { name: 'Business / Corporate', count: 0 }).name;
+      const derivedIndustry = captureIndustry || CATEGORY_MAP[bestCat] || 'COMPANIES';
 
       // Step 1 — Save client (always succeeds independently of payment)
       const clientRes = await apiClient.post('/api/v1/clients', {
@@ -138,7 +287,7 @@ function CaptureWizard({ themeHex, onClientSaved }: { themeHex: string; onClient
         country: agentCountry,
         location: captureInfo.location.trim(),
         notes: captureInfo.notes.trim(),
-        industryCategory: captureIndustry,
+        industryCategory: derivedIndustry,
         serviceDescription: captureServices.join(', '),
         paymentPlan: capturePlan,
         mpesaNumber: captureMpesa.trim(),
@@ -278,7 +427,7 @@ function CaptureWizard({ themeHex, onClientSaved }: { themeHex: string; onClient
             </div>
           </div>
           <div className="sticky bottom-0 bg-white pt-3 pb-1 -mx-6 px-6 border-t border-gray-100 mt-2">
-            <PortalButton color={themeHex} fullWidth>Next: Select Product →</PortalButton>
+            <PortalButton color={themeHex} type="submit" fullWidth>Next: Select Product →</PortalButton>
           </div>
         </form>
       )}
@@ -291,7 +440,6 @@ function CaptureWizard({ themeHex, onClientSaved }: { themeHex: string; onClient
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               { id: 'SYSTEM' as const, title: 'SYSTEM', desc: 'ERP/software systems' },
-              { id: 'PLOTCONNECT' as const, title: 'TST PlotConnect', desc: 'Property listings' },
             ].map(p => (
               <button key={p.id} onClick={() => handleProductSelect(p.id)}
                 className={`p-6 rounded-2xl border-2 text-left transition-all hover:shadow-md ${captureProduct === p.id ? 'border-current' : 'border-gray-200'}`}
@@ -307,56 +455,96 @@ function CaptureWizard({ themeHex, onClientSaved }: { themeHex: string; onClient
       {/* Step 3a — SYSTEM */}
       {captureStep === '3a' && (
         <form onSubmit={handleSystemSubmit}>
-          <button type="button" onClick={() => setCaptureStep(2)} className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1">← Back</button>
+          <button type="button" onClick={() => setCaptureStep(1)} className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1">← Back</button>
+
+          {/* Categorised software picker */}
           <div className="mb-5">
-            <label className={labelCls}>Select Industry *</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {Object.keys(INDUSTRY_SERVICES).map(ind => (
-                <button type="button" key={ind} onClick={() => { setCaptureIndustry(ind); setCaptureServices([]); }}
-                  className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${captureIndustry === ind ? 'text-white border-transparent' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                  style={captureIndustry === ind ? { backgroundColor: themeHex } : {}}>
-                  {ind.replace('_', ' ')}
-                </button>
-              ))}
+            <label className={labelCls}>Select Software Systems *</label>
+            <p className="text-xs text-gray-400 mb-3">
+              Click a category to expand it, then pick the systems the client wants.
+              Selecting 2+ systems unlocks a 10% multi-system discount.
+            </p>
+            <div className="space-y-2">
+              {SOFTWARE_CATALOGUE.map(cat => {
+                return (
+                  <SoftwareCategoryAccordion
+                    key={cat.category}
+                    category={cat.category}
+                    icon={cat.icon}
+                    items={cat.items}
+                    selected={captureServices}
+                    themeHex={themeHex}
+                    onToggle={name => setCaptureServices(prev =>
+                      prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
+                    )}
+                  />
+                );
+              })}
             </div>
-          </div>
-          {captureIndustry && (
-            <div className="mb-5">
-              <label className={labelCls}>Select Services *</label>
-              <div className="space-y-2">
-                {INDUSTRY_SERVICES[captureIndustry].map(svc => (
-                  <label key={svc} className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={captureServices.includes(svc)}
-                      onChange={e => setCaptureServices(prev => e.target.checked ? [...prev, svc] : prev.filter(s => s !== svc))}
-                      className="rounded" />
-                    <span className="text-sm text-gray-700">{svc}</span>
-                  </label>
-                ))}
+
+            {captureServices.length > 0 && (
+              <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-sm">
+                <p className="font-medium text-slate-700">
+                  {captureServices.length} system{captureServices.length > 1 ? 's' : ''} selected
+                  {captureServices.length > 1 && (
+                    <span className="ml-2 text-green-600 font-semibold">— 10% multi-system discount ✓</span>
+                  )}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{captureServices.join(' · ')}</p>
               </div>
-              {captureServices.length > 1 && (
-                <p className="mt-2 text-sm text-green-600 font-medium">10% multi-service discount applied ✓</p>
-              )}
-            </div>
-          )}
+            )}
+          </div>
+
+          {/* Payment plan */}
           <div className="mb-5">
             <label className={labelCls}>Payment Plan *</label>
             <div className="space-y-2">
               {(Object.keys(PLAN_LABELS) as Array<'FULL' | '50_50' | 'MILESTONE'>).map(plan => (
                 <label key={plan} className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="plan" value={plan} checked={capturePlan === plan} onChange={() => setCapturePlan(plan)} />
+                  <input type="radio" name="plan" value={plan} checked={capturePlan === plan}
+                    onChange={() => {
+                      setCapturePlan(plan);
+                      setCaptureCommitment(String(PLAN_AMOUNTS[plan]));
+                    }} />
                   <span className="text-sm text-gray-700">{PLAN_LABELS[plan]}</span>
                 </label>
               ))}
             </div>
           </div>
+
+          {/* Editable commitment amount */}
+          <div className="mb-5 p-4 rounded-xl bg-amber-50 border border-amber-200">
+            <label className={labelCls}>Commitment Amount (KSh) *</label>
+            <p className="text-xs text-amber-700 mb-2">
+              This is the amount the client pays now as commitment before the contract is generated.
+              You can adjust it based on what was agreed with the client.
+            </p>
+            <input
+              type="number" min="1" required
+              value={captureCommitment}
+              onChange={e => setCaptureCommitment(e.target.value)}
+              className={`${inputCls} font-semibold text-base`}
+              placeholder="e.g. 5000"
+            />
+            {captureCommitment && parseFloat(captureCommitment) > 0 && (
+              <p className="text-xs text-amber-700 mt-1 font-medium">
+                STK Push will be sent for KSh {parseFloat(captureCommitment).toLocaleString()}
+              </p>
+            )}
+          </div>
+
           <div className="mb-6">
             <SandboxBanner />
-            <label className={labelCls}>M-Pesa Number for commitment payment *</label>
-            <input type="tel" required value={captureMpesa} onChange={e => setCaptureMpesa(e.target.value)} className={inputCls} placeholder="e.g. 0712345678" />
+            <label className={labelCls}>Client M-Pesa Number *</label>
+            <input type="tel" required value={captureMpesa}
+              onChange={e => setCaptureMpesa(e.target.value)}
+              className={inputCls} placeholder="e.g. 0712345678" />
           </div>
+
           <div className="sticky bottom-0 bg-white pt-3 pb-1 -mx-6 px-6 border-t border-gray-100 mt-2">
-            <PortalButton color={themeHex} fullWidth disabled={captureSubmitting || !captureIndustry || captureServices.length === 0}>
-              {captureSubmitting ? 'Registering…' : 'Register Client & Initiate Payment'}
+            <PortalButton color={themeHex} type="submit" fullWidth
+              disabled={captureSubmitting || captureServices.length === 0}>
+              {captureSubmitting ? 'Registering…' : `Register Client & Send KSh ${parseFloat(captureCommitment || '0').toLocaleString()} STK Push`}
             </PortalButton>
           </div>
         </form>
@@ -464,7 +652,7 @@ function CaptureWizard({ themeHex, onClientSaved }: { themeHex: string; onClient
             <input type="tel" required value={captureMpesa} onChange={e => setCaptureMpesa(e.target.value)} className={inputCls} placeholder="e.g. 0712345678" />
           </div>
           <div className="sticky bottom-0 bg-white pt-3 pb-1 -mx-6 px-6 border-t border-gray-100 mt-2">
-            <PortalButton color={themeHex} fullWidth disabled={captureSubmitting}>
+            <PortalButton color={themeHex} type="submit" fullWidth disabled={captureSubmitting}>
               {captureSubmitting ? 'Registering…' : 'Register Client & Initiate Payment'}
             </PortalButton>
           </div>
@@ -914,71 +1102,15 @@ function ClientsSection({ clients, themeHex, refetch, setSection }: {
 }
 
 // ─── NAV — doc §6 Portal 6: Overview, Add New Client, My Client List, Lead Status Tracker, Personal Profile ──────────────────────────────────────────────────────────────────────────────────
+// Nav matches spec: Overview, Tab1 Add New Client, Tab2-5 PlotConnect, Tab6 My Clients, Tab7 Profile
 const NAV = [
   { id: 'overview',     label: 'Overview',          icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg> },
   { id: 'capture',      label: 'Add New Client',    icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg> },
+  { id: 'marketer',     label: 'Add Property',      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
   { id: 'clients',      label: 'My Clients',        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
   { id: 'lead-status',  label: 'Lead Status',       icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
-  { id: 'profile',      label: 'My Profile',        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
   { id: 'daily-report', label: 'Daily Report',      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
-  // doc §18: Agents have no chat — personal dashboard only
 ];
-
-// ─── Notifications section (proper component — hooks can't be in IIFE) ────────
-function PortalNotificationsSection({ notifs, refetch, themeHex, subtitle }: {
-  notifs: any[]; refetch: (keys?: string[]) => void;
-  themeHex: string; subtitle?: string;
-}) {
-  const [localNotifs, setLocalNotifs] = React.useState<any[]>(notifs);
-  React.useEffect(() => setLocalNotifs(notifs), [notifs]);
-  const markRead = async (id: string) => {
-    try {
-      const { apiClient } = await import('../../shared/api/apiClient');
-      await apiClient.patch(`/api/v1/notifications/${id}/read`);
-      setLocalNotifs(p => p.map(n => n.id === id ? { ...n, read: true } : n));
-      refetch(['notifications']);
-    } catch { /* silent */ }
-  };
-  const markAll = async () => {
-    try {
-      const { apiClient } = await import('../../shared/api/apiClient');
-      await Promise.all(localNotifs.filter(n => !n.read).map(n => apiClient.patch(`/api/v1/notifications/${n.id}/read`)));
-      setLocalNotifs(p => p.map(n => ({ ...n, read: true })));
-      refetch(['notifications']);
-    } catch { /* silent */ }
-  };
-  const unread = localNotifs.filter(n => !n.read).length;
-  return (
-    <div>
-      <SectionHeader title="Notifications" subtitle={subtitle} />
-      <div className="space-y-3">
-        {unread > 0 && (
-          <div className="flex justify-end">
-            <PortalButton size="sm" variant="secondary" onClick={markAll}>Mark all as read ({unread})</PortalButton>
-          </div>
-        )}
-        {(Array.isArray(localNotifs) ? localNotifs : []).map((n: any, i: number) => (
-          <div key={n.id || i} className={`bg-white rounded-2xl border p-4 flex items-start gap-4 ${n.read ? 'border-gray-100' : 'border-blue-100 bg-blue-50/30'}`}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: themeHex + '22' }}>
-              <svg className="w-5 h-5" style={{ color: themeHex }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-gray-900 text-sm">{n.title || 'Notification'}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{n.message || n.description || ''}</p>
-              {n.createdAt && <p className="text-xs text-gray-400 mt-1">{new Date(n.createdAt).toLocaleDateString()}</p>}
-            </div>
-            {!n.read && (
-              <button onClick={() => markRead(n.id)} className="text-xs text-blue-600 hover:underline flex-shrink-0 mt-1">Mark read</button>
-            )}
-          </div>
-        ))}
-        {!localNotifs.length && <div className="text-center py-12 text-gray-400 text-sm">No notifications yet</div>}
-      </div>
-    </div>
-  );
-}
 
 // ─── Main Portal ──────────────────────────────────────────────────────────────
 export default function AgentsPortal() {
@@ -986,7 +1118,7 @@ export default function AgentsPortal() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const { data, loading, isLive, refetch } = useMultiPortalData([
+  const { data, refetch } = useMultiPortalData([
     { key: 'performance',   endpoint: '/api/v1/dashboard/agent-metrics', fallback: {},
       transform: (r: any) => r?.data || r || {} },
     { key: 'clients',       endpoint: '/api/v1/clients',                 fallback: [],
@@ -997,6 +1129,8 @@ export default function AgentsPortal() {
       transform: (r: any) => Array.isArray(r) ? r : (r.data || []) },
     { key: 'notifications', endpoint: '/api/v1/notifications',           fallback: [],
       transform: (r: any) => Array.isArray(r) ? r : (r?.notifications || r?.data || []) },
+    { key: 'properties',    endpoint: '/api/v1/marketer/properties',     fallback: [],
+      transform: (r: any) => Array.isArray(r) ? r : (r?.data || r?.properties || []) },
   ] as any, [
     'data:client:created', 'data:client:updated', 'data:client:status_changed',
     'data:notification:new', 'data:metrics:updated',
@@ -1007,6 +1141,7 @@ export default function AgentsPortal() {
   const commissions = (data as any).commissions?.data || (data as any).commissions || [];
   const training    = (data as any).training?.data    || (data as any).training    || [];
   const notifs      = (data as any).notifications?.data || (data as any).notifications || [];
+  const properties  = (data as any).properties?.data  || (data as any).properties  || [];
 
   const nav = NAV;
 
@@ -1018,12 +1153,29 @@ export default function AgentsPortal() {
 
       {section === 'overview' && (
         <div>
-          <SectionHeader title="Agent Dashboard" subtitle="Your performance metrics and activity" />
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard label="KPI Score"         value={(perf as any).kpiScore != null ? `${(perf as any).kpiScore}%` : '—'}                          icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>} color={theme.hex} />
-            <StatCard label="My Clients"        value={(perf as any).totalClients ?? (Array.isArray(clients) ? clients.length : '—')} icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>} color={theme.hex} />
-            <StatCard label="Closed Won"      value={(perf as any).closedDeals ?? (Array.isArray(clients) ? clients.filter((c: any) => c.status === 'CLOSED_WON').length : '—')}                             icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>} color={theme.hex} />
-            <StatCard label="Commissions (KSh)" value={(perf as any).totalCommissions != null ? Number((perf as any).totalCommissions).toLocaleString() : '—'}  icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} color={theme.hex} />
+          <SectionHeader title="Agent Dashboard" subtitle="Your performance overview — personal data only" />
+          {/* Spec: Overview Cards — Clients Added, Active Leads, Closed Deals, Properties Submitted, Performance Score */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <StatCard label="Clients Added"
+              value={(perf as any).totalClients ?? (Array.isArray(clients) ? clients.length : '—')}
+              icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>}
+              color={theme.hex} />
+            <StatCard label="Active Leads"
+              value={(perf as any).activeLeads ?? (Array.isArray(clients) ? clients.filter((c: any) => !['CLOSED_WON','NEGOTIATION'].includes(c.status)).length : '—')}
+              icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
+              color={theme.hex} />
+            <StatCard label="Closed Deals"
+              value={(perf as any).closedDeals ?? (Array.isArray(clients) ? clients.filter((c: any) => c.status === 'CLOSED_WON').length : '—')}
+              icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+              color={theme.hex} />
+            <StatCard label="Properties Submitted"
+              value={Array.isArray(properties) ? properties.length : (perf as any).propertiesSubmitted ?? '—'}
+              icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>}
+              color={theme.hex} />
+            <StatCard label="Performance Score"
+              value={(perf as any).kpiScore != null ? `${(perf as any).kpiScore}%` : '—'}
+              icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>}
+              color={theme.hex} />
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="rounded-2xl p-5" style={cardStyle}>
@@ -1202,6 +1354,10 @@ export default function AgentsPortal() {
       )}
 
       {/* doc §18: Agents have no chat — section intentionally omitted */}
+
+      {section === 'marketer' && (
+        <MarketerDashboard themeHex={theme.hex} />
+      )}
     </PortalLayout>
   );
 }

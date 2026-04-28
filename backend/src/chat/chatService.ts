@@ -10,8 +10,8 @@ import logger from '../utils/logger';
 
 export type RoomType = 'DIRECT' | 'GROUP' | 'DEPARTMENT' | 'PROJECT';
 
-/** Maximum file attachment size: 10 MB (Requirement 13.8) */
-export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+/** Maximum file attachment size: 5 MB (updated requirement) */
+export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
 /** Message retention period in days (Requirement 13.6) */
 export const MESSAGE_RETENTION_DAYS = 90;
@@ -22,6 +22,9 @@ export interface ChatMessage {
   senderId: string;
   content: string;
   fileId: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  fileUrl?: string | null;
   createdAt: Date;
   readBy?: string[];
   isDeletedForEveryone?: boolean;
@@ -292,9 +295,10 @@ export class ChatService {
     roomId: string,
     senderId: string,
     content: string,
-    fileId?: string
+    fileId?: string,
+    fileName?: string,
+    mimeType?: string
   ): Promise<ChatMessage> {
-    // Ensure a partition exists for the current month before inserting
     await this.ensureCurrentMonthPartition();
 
     const result = await db.query<{
@@ -303,12 +307,14 @@ export class ChatService {
       sender_id: string;
       content: string;
       file_id: string | null;
+      file_name: string | null;
+      mime_type: string | null;
       created_at: Date;
     }>(
-      `INSERT INTO chat_messages (room_id, sender_id, content, file_id)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, room_id, sender_id, content, file_id, created_at`,
-      [roomId, senderId, content, fileId ?? null]
+      `INSERT INTO chat_messages (room_id, sender_id, content, file_id, file_name, mime_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, room_id, sender_id, content, file_id, file_name, mime_type, created_at`,
+      [roomId, senderId, content, fileId ?? null, fileName ?? null, mimeType ?? null]
     );
 
     const row = result.rows[0];
@@ -320,6 +326,9 @@ export class ChatService {
       senderId: row.sender_id,
       content: row.content,
       fileId: row.file_id,
+      fileName: row.file_name,
+      mimeType: row.mime_type,
+      fileUrl: row.file_id ? `/api/v1/chat/files/${row.file_id}` : null,
       createdAt: row.created_at,
     };
 
@@ -364,9 +373,11 @@ export class ChatService {
       sender_id: string;
       content: string;
       file_id: string | null;
+      file_name: string | null;
+      mime_type: string | null;
       created_at: Date;
     }>(
-      `SELECT id, room_id, sender_id, content, file_id, created_at, read_by, is_deleted_for_everyone
+      `SELECT id, room_id, sender_id, content, file_id, file_name, mime_type, created_at, read_by, is_deleted_for_everyone
        FROM chat_messages
        WHERE ${conditions.join(' AND ')}
        ORDER BY created_at DESC
@@ -380,6 +391,9 @@ export class ChatService {
       senderId: row.sender_id,
       content: row.content,
       fileId: row.file_id,
+      fileName: (row as any).file_name ?? null,
+      mimeType: (row as any).mime_type ?? null,
+      fileUrl: row.file_id ? `/api/v1/chat/files/${row.file_id}` : null,
       createdAt: row.created_at,
       readBy: (row as any).read_by || [],
       isDeletedForEveryone: (row as any).is_deleted_for_everyone || false,
@@ -474,9 +488,11 @@ export class ChatService {
       sender_id: string;
       content: string;
       file_id: string | null;
+      file_name: string | null;
+      mime_type: string | null;
       created_at: Date;
     }>(
-      `SELECT id, room_id, sender_id, content, file_id, created_at, read_by, is_deleted_for_everyone
+      `SELECT id, room_id, sender_id, content, file_id, file_name, mime_type, created_at, read_by, is_deleted_for_everyone
        FROM chat_messages
        WHERE ${conditions.join(' AND ')}
        ORDER BY created_at DESC
@@ -490,6 +506,9 @@ export class ChatService {
       senderId: row.sender_id,
       content: row.content,
       fileId: row.file_id,
+      fileName: (row as any).file_name ?? null,
+      mimeType: (row as any).mime_type ?? null,
+      fileUrl: row.file_id ? `/api/v1/chat/files/${row.file_id}` : null,
       createdAt: row.created_at,
       readBy: (row as any).read_by || [],
       isDeletedForEveryone: (row as any).is_deleted_for_everyone || false,

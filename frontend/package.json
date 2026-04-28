@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^1.9.5",
+    "@types/leaflet": "^1.9.21",
     "autoprefixer": "^10.5.0",
     "axios": "^1.4.0",
     "browserslist": "^4.28.2",
@@ -34,6 +35,7 @@
     "chart.js": "^4.3.3",
     "esbuild": "^0.18.20",
     "happy-dom": "^20.9.0",
+    "leaflet": "^1.9.4",
     "postcss": "^8.4.27",
     "postcss-load-config": "^6.0.1",
     "react": "^18.2.0",

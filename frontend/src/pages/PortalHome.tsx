@@ -1,4 +1,3 @@
-import React from 'react';
 import { useNavigate } from '../shared/utils/router';
 import { PORTAL_THEMES } from '../shared/theme/portalThemes';
 import TSTLogo from '../shared/components/TSTLogo';

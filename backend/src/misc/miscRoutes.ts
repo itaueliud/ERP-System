@@ -293,15 +293,18 @@ router.put('/finance/tot-rate', async (req: Request, res: Response) => {
 // ─── Trainers Performance ─────────────────────────────────────────────────────
 router.get('/trainers/performance', async (_req, res) => {
   const r = await safeQuery(
-    `SELECT u.id, u.full_name as name, u.country,
-            COUNT(DISTINCT c.id) as "agentsCount",
-            COALESCE(AVG(c.performance_score), 0) as "performanceScore"
+    `SELECT u.id, u.full_name AS name, u.email, u.country,
+            COUNT(DISTINCT ag.id)  AS "agentsCount",
+            COUNT(DISTINCT cl.id)  AS "assignedClients"
      FROM users u
      JOIN roles ro ON ro.id = u.role_id
-     LEFT JOIN clients c ON c.trainer_id = u.id
+     LEFT JOIN users ag ON ag.trainer_id = u.id
+     LEFT JOIN clients cl ON cl.trainer_id = u.id
+       AND cl.status IN ('NEGOTIATION', 'CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED')
      WHERE ro.name IN ('TRAINER', 'HEAD_OF_TRAINERS')
-     GROUP BY u.id, u.full_name, u.country
-     ORDER BY "performanceScore" DESC`
+       AND u.is_active = TRUE
+     GROUP BY u.id, u.full_name, u.email, u.country
+     ORDER BY u.full_name ASC`
   );
   res.json({ success: true, data: r.rows });
 });

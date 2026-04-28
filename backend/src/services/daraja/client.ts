@@ -172,6 +172,9 @@ export class DarajaAPIClient {
 
   // ── OAuth Token ─────────────────────────────────────────────────────────────
 
+  /** In-process token cache — avoids a fresh OAuth call on every STK push */
+  private cachedToken: { value: string; expiresAt: number } | null = null;
+
   private async getAccessToken(): Promise<string> {
     // Treat missing or obvious placeholder values as "not configured"
     const isPlaceholder = (v: string) =>
@@ -185,13 +188,22 @@ export class DarajaAPIClient {
       throw new Error('Daraja consumer key and secret are required in production mode');
     }
 
+    // Return cached token if still valid (with 60s safety margin)
+    if (this.cachedToken && Date.now() < this.cachedToken.expiresAt - 60_000) {
+      return this.cachedToken.value;
+    }
+
     const credentials = Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
     try {
       const response = await axios.get(
         `${config.daraja.apiUrl}/oauth/v1/generate?grant_type=client_credentials`,
         { headers: { Authorization: `Basic ${credentials}` }, timeout: 30000 }
       );
-      return response.data.access_token;
+      const token: string = response.data.access_token;
+      // Daraja tokens are valid for 3600s; cache for that duration
+      const expiresIn: number = response.data.expires_in ?? 3600;
+      this.cachedToken = { value: token, expiresAt: Date.now() + expiresIn * 1000 };
+      return token;
     } catch (error: any) {
       // If OAuth times out or fails in sandbox, fall back to simulation
       if (this.sandboxMode) {
@@ -414,11 +426,25 @@ export class DarajaAPIClient {
 
   verifyWebhookSignature(signature: string, payload: string): boolean {
     const secret = config.daraja.webhookSecret;
-    // No secret configured, or no signature sent (real Daraja callbacks don't send one) — allow
-    if (!secret || !signature) {
-      if (!signature) logger.info('[DARAJA] No signature header — accepting as real Daraja callback');
+    const isProduction = !this.sandboxMode;
+
+    // In production, a missing secret is a misconfiguration — reject all callbacks
+    if (!secret) {
+      if (isProduction) {
+        logger.error('[DARAJA] SECURITY: DARAJA_WEBHOOK_SECRET is not configured in production — rejecting all webhook callbacks');
+        return false;
+      }
+      // Sandbox with no secret: accept (dev convenience only)
+      logger.warn('[DARAJA SANDBOX] No webhook secret configured — accepting unsigned callback (sandbox only)');
       return true;
     }
+
+    // Secret is configured — signature is now mandatory regardless of environment
+    if (!signature) {
+      logger.warn('[DARAJA] Webhook rejected: signature header missing but secret is configured');
+      return false;
+    }
+
     const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
     const sigBuf      = Buffer.from(signature);
     const expectedBuf = Buffer.from(expected);
