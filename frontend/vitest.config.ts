@@ -28,8 +28,10 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: ['./src/test-setup.ts'],
     css: false,
-    deps: {
-      inline: ['@tanstack/react-query', '@tanstack/query-core'],
+    server: {
+      deps: {
+        inline: ['@tanstack/react-query', '@tanstack/query-core'],
+      },
     },
   },
 });
