@@ -57,7 +57,7 @@ describe('AgentsPortal', () => {
   it('shows the sidebar navigation items', () => {
     render(<AgentsPortal />);
     expect(screen.getAllByText('Overview').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Capture Client').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Add New Client').length).toBeGreaterThan(0);
     expect(screen.getAllByText('My Clients').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Commissions').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Training').length).toBeGreaterThan(0);
@@ -75,24 +75,24 @@ describe('AgentsPortal', () => {
 
   it('navigates to capture client section', () => {
     render(<AgentsPortal />);
-    fireEvent.click(screen.getByText('Capture Client'));
+    fireEvent.click(screen.getByText('Add New Client'));
     expect(screen.getByText('Capture New Client')).toBeInTheDocument();
   });
 
   it('capture form renders all required fields', () => {
     render(<AgentsPortal />);
-    fireEvent.click(screen.getByText('Capture Client'));
-    expect(screen.getByPlaceholderText('Client full name')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Add New Client'));
+    expect(screen.getByPlaceholderText('CLIENT FULL NAME')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('client@example.com')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('+254 7XX XXX XXX')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Kenya')).toBeInTheDocument();
-    expect(screen.getByText('Register Client')).toBeInTheDocument();
+    expect(screen.getByText('Save Client')).toBeInTheDocument();
   });
 
   it('capture form fields have required attribute', () => {
     render(<AgentsPortal />);
-    fireEvent.click(screen.getByText('Capture Client'));
-    const nameInput = screen.getByPlaceholderText('Client full name');
+    fireEvent.click(screen.getByText('Add New Client'));
+    const nameInput = screen.getByPlaceholderText('CLIENT FULL NAME');
     const emailInput = screen.getByPlaceholderText('client@example.com');
     expect(nameInput).toHaveAttribute('required');
     expect(emailInput).toHaveAttribute('required');
@@ -107,7 +107,7 @@ describe('AgentsPortal', () => {
   it('shows empty clients table when no data', () => {
     render(<AgentsPortal />);
     fireEvent.click(screen.getAllByText('My Clients')[0]);
-    expect(screen.getByText('No data')).toBeInTheDocument();
+    expect(screen.getByText(/No clients yet/i)).toBeInTheDocument();
   });
 
   it('navigates to commissions section', () => {

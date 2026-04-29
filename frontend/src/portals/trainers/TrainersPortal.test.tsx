@@ -38,14 +38,14 @@ describe('TrainersPortal', () => {
   it('shows sidebar navigation items', () => {
     render(<TrainersPortal />);
     expect(screen.getAllByText('Overview').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Courses').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Assignments').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Agent Performance').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('My Agents').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Client Leads').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Achievements').length).toBeGreaterThan(0);
   });
 
   it('shows overview section by default', () => {
     render(<TrainersPortal />);
-    expect(screen.getByText('Training Overview')).toBeInTheDocument();
+    expect(screen.getByText('Trainer Overview')).toBeInTheDocument();
   });
 
   it('shows "Demo data" indicator when API is unavailable', () => {
@@ -53,28 +53,28 @@ describe('TrainersPortal', () => {
     expect(screen.getByText(/Demo data/i)).toBeInTheDocument();
   });
 
-  it('navigates to courses section', () => {
+  it('navigates to my agents section', () => {
     render(<TrainersPortal />);
-    fireEvent.click(screen.getByText('Courses'));
-    expect(screen.getByText('Course Management')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('My Agents'));
+    expect(screen.getByText('My Agents')).toBeInTheDocument();
   });
 
-  it('navigates to assignments section', () => {
+  it('navigates to client leads section', () => {
     render(<TrainersPortal />);
-    fireEvent.click(screen.getByText('Assignments'));
-    expect(screen.getByText('Course Assignments')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Client Leads'));
+    expect(screen.getByText('Client Leads')).toBeInTheDocument();
   });
 
-  it('shows empty assignments table when no data', () => {
+  it('shows empty client leads table when no data', () => {
     render(<TrainersPortal />);
-    fireEvent.click(screen.getByText('Assignments'));
-    expect(screen.getByText('No data')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Client Leads'));
+    expect(screen.getByText('No client leads')).toBeInTheDocument();
   });
 
-  it('navigates to agent performance section', () => {
+  it('navigates to achievements section', () => {
     render(<TrainersPortal />);
-    fireEvent.click(screen.getAllByText('Agent Performance')[0]);
-    expect(screen.getAllByText('Agent Performance').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByText('Achievements')[0]);
+    expect(screen.getAllByText('Achievements').length).toBeGreaterThan(0);
   });
 
   it('does NOT show mock data strings', () => {
