@@ -1,6 +1,6 @@
 import React from 'react';
 
-export interface CardProps {
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   title?: string;
   subtitle?: string;
   footer?: React.ReactNode;
@@ -19,9 +19,9 @@ const variantMap = {
   elevated: 'bg-white rounded-lg shadow-md',
 };
 
-export function Card({ title, subtitle, footer, actions, children, className = '', variant = 'default', padding = 'md' }: CardProps) {
+export function Card({ title, subtitle, footer, actions, children, className = '', variant = 'default', padding = 'md', ...rest }: CardProps) {
   return (
-    <div className={`${variantMap[variant]} overflow-hidden ${className}`}>
+    <div className={`${variantMap[variant]} overflow-hidden ${className}`} {...rest}>
       {(title || actions) && (
         <div className={`flex items-start justify-between gap-4 ${paddingMap[padding]} ${children ? 'border-b border-gray-100 pb-3' : ''}`}>
           <div>
