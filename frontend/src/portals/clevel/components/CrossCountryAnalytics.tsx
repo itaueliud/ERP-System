@@ -72,11 +72,18 @@ export function CrossCountryAnalytics({ achievements }: Props) {
       {/* Region summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         {regionSummary.map((rs) => (
-          <Card key={rs.region} variant="elevated" padding="sm" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setSelectedRegion(rs.region)}>
-            <div className={`w-3 h-3 rounded-full ${REGION_COLORS[rs.region]} mb-2`} />
-            <p className="text-xs font-semibold text-gray-700">{rs.region}</p>
-            <p className="text-lg font-bold text-gray-900">{rs.totalAchievements}</p>
-            <p className="text-xs text-gray-500">{rs.countries} countries</p>
+          <Card key={rs.region} variant="elevated" padding="sm" className="hover:shadow-md transition-shadow">
+            <button
+              type="button"
+              onClick={() => setSelectedRegion(rs.region)}
+              className="w-full text-left cursor-pointer"
+              aria-label={`Filter by ${rs.region}`}
+            >
+              <div className={`w-3 h-3 rounded-full ${REGION_COLORS[rs.region]} mb-2`} />
+              <p className="text-xs font-semibold text-gray-700">{rs.region}</p>
+              <p className="text-lg font-bold text-gray-900">{rs.totalAchievements}</p>
+              <p className="text-xs text-gray-500">{rs.countries} countries</p>
+            </button>
           </Card>
         ))}
       </div>

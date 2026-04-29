@@ -15,13 +15,13 @@ export function DepartmentManagement({ departments }: Props) {
   );
 
   const columns: TableColumn<DepartmentMetrics>[] = [
-    { key: 'name', header: 'Department', render: (_v, d) => <span className="font-medium">{d.name}</span> },
-    { key: 'headCount', header: 'Head Count', render: (_v, d) => d.headCount },
-    { key: 'activeProjects', header: 'Active Projects', render: (_v, d) => d.activeProjects },
+    { key: 'name', header: 'Department', render: (_v, d: DepartmentMetrics) => <span className="font-medium">{d.name}</span> },
+    { key: 'headCount', header: 'Head Count', render: (_v, d: DepartmentMetrics) => d.headCount },
+    { key: 'activeProjects', header: 'Active Projects', render: (_v, d: DepartmentMetrics) => d.activeProjects },
     {
       key: 'completionRate',
       header: 'Completion Rate',
-      render: (_v, d) => (
+      render: (_v, d: DepartmentMetrics) => (
         <div className="flex items-center gap-2">
           <div className="flex-1 bg-gray-200 rounded-full h-2 w-20">
             <div
@@ -36,7 +36,7 @@ export function DepartmentManagement({ departments }: Props) {
     {
       key: 'budget',
       header: 'Budget Usage',
-      render: (_v, d) => {
+      render: (_v, d: DepartmentMetrics) => {
         const pct = Math.round((d.budgetUsed / d.budget) * 100);
         return (
           <div className="flex items-center gap-2">
@@ -54,7 +54,7 @@ export function DepartmentManagement({ departments }: Props) {
     {
       key: 'kpiScore',
       header: 'KPI Score',
-      render: (_v, d) => (
+      render: (_v, d: DepartmentMetrics) => (
         <span
           className={`px-2 py-1 rounded-full text-xs font-semibold ${
             d.kpiScore >= 85 ? 'bg-green-100 text-green-800' : d.kpiScore >= 70 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
