@@ -93,7 +93,7 @@ export function DepartmentManagement({ departments }: Props) {
         ))}
       </div>
       <Card variant="elevated" padding="none">
-        <Table data={filtered} columns={columns} aria-label="Departments table" />
+        <Table<DepartmentMetrics> data={filtered} columns={columns} rowKey="id" aria-label="Departments table" />
       </Card>
     </section>
   );

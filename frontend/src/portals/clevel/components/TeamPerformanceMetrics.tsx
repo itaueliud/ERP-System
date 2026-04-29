@@ -84,7 +84,7 @@ export function TeamPerformanceMetrics({ members }: Props) {
       </div>
 
       <Card variant="elevated" padding="none">
-        <Table data={sorted} columns={columns} aria-label="Team performance table" />
+        <Table<TeamPerformance> data={sorted} columns={columns} rowKey="memberId" aria-label="Team performance table" />
       </Card>
     </section>
   );
