@@ -15,7 +15,7 @@ import logger from '../utils/logger';
 const router = Router();
 
 const REPORT_SUBMITTERS = [
-  Role.TRAINER, Role.HEAD_OF_TRAINERS, 'OPERATIONS_USER', 'TECHNOLOGY_USER', 'DEVELOPER',
+  Role.TRAINER, Role.HEAD_OF_TRAINERS, 'OPERATIONS_USER', 'TECH_STAFF', 'DEVELOPER',
   Role.COO, Role.CTO,
 ];
 
@@ -81,18 +81,18 @@ router.get('/mine', async (req: Request, res: Response) => {
 });
 
 // ── COO/CEO: View team reports ────────────────────────────────────────────────
-router.get('/team', requireRole(Role.COO, Role.CEO, Role.CoS, Role.CTO), async (req: Request, res: Response) => {
+router.get('/team', requireRole(Role.COO, Role.CEO, Role.CoS, Role.CTO, Role.OPERATIONS_USER), async (req: Request, res: Response) => {
   try {
     const { date, departmentId, limit, offset } = req.query;
-    const reportDate = (date as string) || new Date().toISOString().split('T')[0];
 
-    const conditions = [`dr.report_date = $1`];
-    const values: any[] = [reportDate];
-    let p = 2;
+    const conditions: string[] = [];
+    const values: any[] = [];
+    let p = 1;
 
+    if (date) { conditions.push(`dr.report_date = $${p++}`); values.push(date); }
     if (departmentId) { conditions.push(`u.department_id = $${p++}`); values.push(departmentId); }
 
-    const where = `WHERE ${conditions.join(' AND ')}`;
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     values.push(limit ? parseInt(limit as string) : 50, offset ? parseInt(offset as string) : 0);
 
     const result = await db.query(
@@ -112,7 +112,7 @@ router.get('/team', requireRole(Role.COO, Role.CEO, Role.CoS, Role.CTO), async (
 });
 
 // ── Check who hasn't submitted today (for automated alerts — doc §20) ─────────
-router.get('/missing', requireRole(Role.COO, Role.CEO, Role.CoS, Role.CTO), async (req: Request, res: Response) => {
+router.get('/missing', requireRole(Role.COO, Role.CEO, Role.CoS, Role.CTO), async (_req: Request, res: Response) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
@@ -122,7 +122,7 @@ router.get('/missing', requireRole(Role.COO, Role.CEO, Role.CoS, Role.CTO), asyn
        FROM users u
        JOIN roles r ON r.id = u.role_id
        WHERE u.is_active = TRUE
-         AND r.name IN ('TRAINER','HEAD_OF_TRAINERS','OPERATIONS_USER','TECHNOLOGY_USER','DEVELOPER')
+         AND r.name IN ('TRAINER','HEAD_OF_TRAINERS','OPERATIONS_USER','TECH_STAFF','DEVELOPER')
          AND u.id NOT IN (
            SELECT user_id FROM daily_reports WHERE report_date = $1
          )

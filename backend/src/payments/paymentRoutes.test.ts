@@ -21,11 +21,16 @@ jest.mock('../config', () => ({
       user: 'test',
       password: 'test',
     },
-    jenga: {
-      apiKey: 'test-api-key',
-      merchantCode: 'test-merchant',
+    daraja: {
+      consumerKey: 'test-consumer-key',
+      consumerSecret: 'test-consumer-secret',
+      shortCode: '174379',
+      passKey: 'test-pass-key',
+      callbackUrl: 'http://localhost:3000',
       webhookSecret: 'test-webhook-secret',
-      apiUrl: 'https://api.jenga.test',
+      apiUrl: 'https://sandbox.safaricom.co.ke',
+      b2cInitiatorName: 'testapi',
+      b2cSecurityCredential: 'test-credential',
     },
   },
 }));
@@ -54,7 +59,7 @@ describe('Payment Routes', () => {
 
       const response = await request(app)
         .post('/api/payments/webhook')
-        .set('x-jenga-signature', 'valid-signature')
+        .set('x-daraja-signature', 'valid-signature')
         .send(mockPayload);
 
       expect(response.status).toBe(200);
@@ -92,7 +97,7 @@ describe('Payment Routes', () => {
 
       const response = await request(app)
         .post('/api/payments/webhook')
-        .set('x-jenga-signature', 'invalid-signature')
+        .set('x-daraja-signature', 'invalid-signature')
         .send(mockPayload);
 
       expect(response.status).toBe(401);
@@ -107,7 +112,7 @@ describe('Payment Routes', () => {
 
       const response = await request(app)
         .post('/api/payments/webhook')
-        .set('x-jenga-signature', 'valid-signature')
+        .set('x-daraja-signature', 'valid-signature')
         .send(mockPayload);
 
       expect(response.status).toBe(400);
@@ -127,7 +132,7 @@ describe('Payment Routes', () => {
 
       const response = await request(app)
         .post('/api/payments/webhook')
-        .set('x-jenga-signature', 'valid-signature')
+        .set('x-daraja-signature', 'valid-signature')
         .send(mockPayload);
 
       expect(response.status).toBe(500);

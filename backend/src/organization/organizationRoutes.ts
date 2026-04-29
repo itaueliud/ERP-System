@@ -290,18 +290,19 @@ router.get('/departments/:id/users', async (req: Request, res: Response) => {
 });
 
 /**
+/**
  * GET /api/v1/organization/teams
  */
 router.get('/teams', async (_req: Request, res: Response) => {
   try {
     const { db } = await import('../database/connection');
     const result = await db.query(
-      `SELECT t.id, t.name, t.github_org as "githubOrg",
-              u.full_name as "leaderName", t.leader_id as "leaderId",
-              (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) as "memberCount"
-       FROM teams t
-       LEFT JOIN users u ON u.id = t.leader_id
-       ORDER BY t.created_at DESC`
+      `SELECT dt.id, dt.name, dt.github_org as "githubOrg",
+              u.full_name as "leaderName", dt.team_leader_id as "leaderId",
+              (SELECT COUNT(*) FROM users m WHERE m.team_id = dt.id) as "memberCount"
+       FROM developer_teams dt
+       LEFT JOIN users u ON u.id = dt.team_leader_id
+       ORDER BY dt.created_at DESC`
     );
     return res.json({ success: true, data: result.rows });
   } catch {
@@ -314,29 +315,208 @@ router.get('/teams', async (_req: Request, res: Response) => {
  */
 router.post('/teams', async (req: Request, res: Response) => {
   try {
-    const { name, leaderId, memberIds, githubOrg } = req.body;
-    if (!name || !leaderId) {
-      return res.status(400).json({ success: false, error: 'name and leaderId are required' });
-    }
+    const { name, leaderId, githubOrg, members } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: 'name is required' });
+
     const { db } = await import('../database/connection');
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Create the team first
     const teamResult = await db.query(
-      `INSERT INTO teams (name, leader_id, github_org, created_at)
-       VALUES ($1, $2, $3, NOW()) RETURNING id, name, leader_id as "leaderId", github_org as "githubOrg"`,
-      [name, leaderId, githubOrg || null]
+      `INSERT INTO developer_teams (name, github_org, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW())
+       RETURNING id, name, team_leader_id as "leaderId", github_org as "githubOrg", created_at`,
+      [name, githubOrg || null]
     );
     const team = teamResult.rows[0];
-    if (Array.isArray(memberIds) && memberIds.length > 0) {
-      for (const memberId of memberIds) {
-        await db.query(
-          `INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [team.id, memberId]
-        ).catch(() => {/* ignore if table doesn't exist yet */});
+
+    // Handle members array (name + email — create/invite new users)
+    if (Array.isArray(members) && members.length > 0) {
+      const devRole = await db.query(`SELECT id FROM roles WHERE name = 'DEVELOPER' LIMIT 1`);
+      const roleId = devRole.rows[0]?.id;
+      let leadUserIdSet = false;
+      for (const m of members) {
+        if (!m.name && !m.email) continue;
+        const payoutMethod: string | null = m.payoutMethod || m.paymentType || null;
+        const payoutPhone: string | null = payoutMethod === 'MPESA' ? (m.payoutPhone || m.paymentAccount || null) : null;
+        const payoutBankAccount: string | null = payoutMethod === 'BANK' ? (m.payoutBankAccount || m.paymentAccount || null) : null;
+        try {
+          let userId: string | null = null;
+          if (m.email) {
+            const existing = await db.query(`SELECT id FROM users WHERE email = $1`, [m.email]);
+            if (existing.rows.length > 0) userId = existing.rows[0].id;
+          }
+          if (!userId && roleId) {
+            const bcrypt = await import('bcrypt');
+            const tempPassword = await bcrypt.hash(`TST@${Date.now()}`, 10);
+            const newUser = await db.query(
+              `INSERT INTO users (email, password_hash, full_name, phone, country, role_id, team_id, is_team_leader, payout_method, payout_phone, payout_bank_account, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) RETURNING id`,
+              [m.email || `${(m.name || 'dev').toLowerCase().replace(/\s+/g, '.')}@tst.local`, tempPassword, m.name || 'Developer', '+254000000000', 'Kenya', roleId, team.id, m.isLeader || false, payoutMethod, payoutPhone, payoutBankAccount]
+            );
+            userId = newUser.rows[0].id;
+          } else if (userId) {
+            await db.query(
+              `UPDATE users SET team_id = $1, is_team_leader = $2, payout_method = COALESCE($3, payout_method), payout_phone = COALESCE($4, payout_phone), payout_bank_account = COALESCE($5, payout_bank_account), updated_at = NOW() WHERE id = $6`,
+              [team.id, m.isLeader || false, payoutMethod, payoutPhone, payoutBankAccount, userId]
+            );
+          }
+          if (m.isLeader && userId && !leadUserIdSet) {
+            await db.query(`UPDATE developer_teams SET team_leader_id = $1 WHERE id = $2`, [userId, team.id]);
+            leadUserIdSet = true;
+          }
+        } catch (memberErr) {
+          logger.warn('Failed to create/assign team member', { memberErr, member: m });
+        }
+      }
+    } else {
+      const safeLeaderId = leaderId && uuidRe.test(leaderId) ? leaderId : null;
+      if (safeLeaderId) {
+        await db.query(`UPDATE developer_teams SET team_leader_id = $1 WHERE id = $2`, [safeLeaderId, team.id]);
+        await db.query(`UPDATE users SET team_id = $1, is_team_leader = TRUE, updated_at = NOW() WHERE id = $2`, [team.id, safeLeaderId]).catch(() => {});
       }
     }
-    return res.status(201).json({ success: true, data: team });
+
+    // Refresh team with leader name
+    const refreshed = await db.query(
+      `SELECT dt.id, dt.name, dt.github_org as "githubOrg", dt.team_leader_id as "leaderId",
+              u.full_name as "leaderName",
+              (SELECT COUNT(*) FROM users m WHERE m.team_id = dt.id) as "memberCount"
+       FROM developer_teams dt LEFT JOIN users u ON u.id = dt.team_leader_id WHERE dt.id = $1`,
+      [team.id]
+    );
+    return res.status(201).json({ success: true, data: refreshed.rows[0] || team });
   } catch (error: any) {
     logger.error('Failed to create team', { error });
     return res.status(400).json({ success: false, error: error.message || 'Failed to create team' });
+  }
+});
+
+/**
+ * GET /api/v1/organization/teams/:teamId/members
+ */
+router.get('/teams/:teamId/members', async (req: Request, res: Response) => {
+  try {
+    const { db } = await import('../database/connection');
+    const result = await db.query(
+      `SELECT u.id, u.full_name as "fullName", u.email, u.github_username as "githubUsername",
+              u.is_team_leader as "isTeamLeader", u.country
+       FROM users u WHERE u.team_id = $1 ORDER BY u.is_team_leader DESC, u.full_name`,
+      [req.params.teamId]
+    );
+    return res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /api/v1/organization/teams/:teamId — update team name / leader / github
+ */
+router.put('/teams/:teamId', async (req: Request, res: Response) => {
+  try {
+    const { name, leaderId, githubOrg, members } = req.body;
+    const { db } = await import('../database/connection');
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Update team metadata
+    await db.query(
+      `UPDATE developer_teams SET
+         name = COALESCE($1, name),
+         github_org = COALESCE($2, github_org),
+         updated_at = NOW()
+       WHERE id = $3`,
+      [name || null, githubOrg !== undefined ? (githubOrg || null) : undefined, req.params.teamId]
+    );
+
+    // Handle members array (name + email)
+    if (Array.isArray(members) && members.length > 0) {
+      const devRole = await db.query(`SELECT id FROM roles WHERE name = 'DEVELOPER' LIMIT 1`);
+      const roleId = devRole.rows[0]?.id;
+
+      // Clear old team assignments
+      await db.query(`UPDATE users SET team_id = NULL, is_team_leader = FALSE WHERE team_id = $1`, [req.params.teamId]);
+      await db.query(`UPDATE developer_teams SET team_leader_id = NULL WHERE id = $1`, [req.params.teamId]);
+
+      for (const m of members) {
+        if (!m.name && !m.email) continue;
+        const payoutMethod: string | null = m.payoutMethod || m.paymentType || null;
+        const payoutPhone: string | null = payoutMethod === 'MPESA' ? (m.payoutPhone || m.paymentAccount || null) : null;
+        const payoutBankAccount: string | null = payoutMethod === 'BANK' ? (m.payoutBankAccount || m.paymentAccount || null) : null;
+        try {
+          let userId: string | null = null;
+          if (m.email) {
+            const existing = await db.query(`SELECT id FROM users WHERE email = $1`, [m.email]);
+            if (existing.rows.length > 0) userId = existing.rows[0].id;
+          }
+          if (!userId && roleId) {
+            const bcrypt = await import('bcrypt');
+            const tempPassword = await bcrypt.hash(`TST@${Date.now()}`, 10);
+            const newUser = await db.query(
+              `INSERT INTO users (email, password_hash, full_name, phone, country, role_id, team_id, is_team_leader,
+                                  payout_method, payout_phone, payout_bank_account, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) RETURNING id`,
+              [
+                m.email || `${(m.name || 'dev').toLowerCase().replace(/\s+/g, '.')}@tst.local`,
+                tempPassword, m.name || 'Developer', '+254000000000', 'Kenya',
+                roleId, req.params.teamId, m.isLeader || false,
+                payoutMethod, payoutPhone, payoutBankAccount,
+              ]
+            );
+            userId = newUser.rows[0].id;
+          } else if (userId) {
+            await db.query(
+              `UPDATE users SET team_id = $1, is_team_leader = $2,
+                payout_method = COALESCE($3, payout_method),
+                payout_phone = COALESCE($4, payout_phone),
+                payout_bank_account = COALESCE($5, payout_bank_account),
+                updated_at = NOW()
+               WHERE id = $6`,
+              [req.params.teamId, m.isLeader || false, payoutMethod, payoutPhone, payoutBankAccount, userId]
+            );
+          }
+          if (m.isLeader && userId) {
+            await db.query(`UPDATE developer_teams SET team_leader_id = $1 WHERE id = $2`, [userId, req.params.teamId]);
+          }
+        } catch (memberErr) {
+          logger.warn('Failed to update team member', { memberErr, member: m });
+        }
+      }
+    } else if (leaderId && uuidRe.test(leaderId)) {
+      await db.query(`UPDATE developer_teams SET team_leader_id = $1 WHERE id = $2`, [leaderId, req.params.teamId]);
+      await db.query(`UPDATE users SET is_team_leader = FALSE WHERE team_id = $1`, [req.params.teamId]);
+      await db.query(`UPDATE users SET is_team_leader = TRUE WHERE id = $1`, [leaderId]).catch(() => {});
+    }
+
+    const result = await db.query(
+      `SELECT dt.id, dt.name, dt.github_org as "githubOrg", dt.team_leader_id as "leaderId",
+              u.full_name as "leaderName",
+              (SELECT COUNT(*) FROM users m WHERE m.team_id = dt.id) as "memberCount"
+       FROM developer_teams dt LEFT JOIN users u ON u.id = dt.team_leader_id WHERE dt.id = $1`,
+      [req.params.teamId]
+    );
+    if (!result.rows.length) return res.status(404).json({ success: false, error: 'Team not found' });
+    return res.json({ success: true, data: result.rows[0] });
+  } catch (error: any) {
+    logger.error('Failed to update team', { error });
+    return res.status(400).json({ success: false, error: error.message || 'Failed to update team' });
+  }
+});
+
+/**
+ * DELETE /api/v1/organization/teams/:teamId
+ */
+router.delete('/teams/:teamId', async (req: Request, res: Response) => {
+  try {
+    const { db } = await import('../database/connection');
+    // Unassign all members first
+    await db.query(`UPDATE users SET team_id = NULL, is_team_leader = FALSE WHERE team_id = $1`, [req.params.teamId]);
+    const result = await db.query(`DELETE FROM developer_teams WHERE id = $1 RETURNING id`, [req.params.teamId]);
+    if (!result.rows.length) return res.status(404).json({ success: false, error: 'Team not found' });
+    return res.json({ success: true, message: 'Team deleted' });
+  } catch (error: any) {
+    logger.error('Failed to delete team', { error });
+    return res.status(400).json({ success: false, error: error.message || 'Failed to delete team' });
   }
 });
 

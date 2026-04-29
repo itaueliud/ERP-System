@@ -5,6 +5,31 @@ import { sendgridClient } from '../services/sendgrid/client';
 import { config } from '../config';
 import logger from '../utils/logger';
 
+// Roles that must provide payout details at registration.
+// Only CEO and CoS are excluded — everyone else is paid through the system.
+export const PAYABLE_ROLES = [
+  'CFO', 'COO', 'CTO', 'EA',
+  'HEAD_OF_TRAINERS', 'TRAINER', 'AGENT',
+  'DEVELOPER', 'OPERATIONS_USER', 'TECH_STAFF', 'CFO_ASSISTANT',
+] as const;
+
+// Who can update whose payout details.
+// Key = target role, Value = roles allowed to change it.
+// Strictly per doc §5 Payment Receiving Account — Change Authority table.
+export const PAYOUT_UPDATE_PERMISSIONS: Record<string, string[]> = {
+  CFO:              ['CEO', 'CoS'],
+  COO:              ['CEO', 'CoS', 'CFO'],
+  CTO:              ['CEO', 'CoS', 'CFO'],
+  EA:               ['CEO', 'CoS', 'CFO'],
+  HEAD_OF_TRAINERS: ['CFO'],                          // doc §5: HoT → CFO only
+  TRAINER:          ['CFO'],                          // doc §5: Trainers → CFO only
+  AGENT:            ['HEAD_OF_TRAINERS'],             // doc §5: Agents → HoT only
+  DEVELOPER:        ['CTO'],                          // doc §5: Developers → CTO only
+  OPERATIONS_USER:  ['CEO', 'CoS', 'CFO', 'COO'],
+  TECH_STAFF:  ['CEO', 'CoS', 'CFO', 'CTO'],
+  CFO_ASSISTANT:    ['CEO', 'CoS', 'CFO'],
+};
+
 export interface CreateUserInput {
   email: string;
   password: string;
@@ -15,6 +40,11 @@ export interface CreateUserInput {
   departmentId?: string;
   languagePreference?: string;
   timezone?: string;
+  // Payout details — required for payable roles
+  payoutMethod?: 'MPESA' | 'BANK';
+  payoutPhone?: string;
+  payoutBankName?: string;
+  payoutBankAccount?: string;
 }
 
 export interface UpdateUserInput {
@@ -28,6 +58,13 @@ export interface UpdateUserInput {
   pendingEmail?: string;        // Requirement 39.5: staged email change
 }
 
+export interface UpdatePayoutInput {
+  payoutMethod: 'MPESA' | 'BANK';
+  payoutPhone?: string;
+  payoutBankName?: string;
+  payoutBankAccount?: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -37,6 +74,8 @@ export interface User {
   roleId: string;
   roleName: string;
   departmentId?: string;
+  departmentName?: string;
+  departmentType?: string;  // e.g. TECHNOLOGY_INFRASTRUCTURE_SECURITY
   githubUsername?: string;
   languagePreference: string;
   timezone: string;
@@ -47,8 +86,18 @@ export interface User {
   suspendedAt?: Date;
   suspensionReason?: string;
   pendingEmail?: string;
+  // Payout details
+  payoutMethod?: string;
+  payoutPhone?: string;
+  payoutBankName?: string;
+  payoutBankAccount?: string;
+  payoutUpdatedAt?: Date;
+  payoutUpdatedBy?: string;
   createdAt: Date;
   updatedAt: Date;
+  // Developer team fields
+  teamId?: string;
+  isTeamLeader?: boolean;
 }
 
 export interface InvitationInput {
@@ -56,6 +105,10 @@ export interface InvitationInput {
   roleId: string;
   departmentId?: string;
   invitedBy: string;
+  payoutMethod?: string;
+  payoutPhone?: string;
+  payoutBankName?: string;
+  payoutBankAccount?: string;
 }
 
 export interface Invitation {
@@ -68,6 +121,10 @@ export interface Invitation {
   usedAt?: Date;
   createdBy: string;
   createdAt: Date;
+  payoutMethod?: string;
+  payoutPhone?: string;
+  payoutBankName?: string;
+  payoutBankAccount?: string;
 }
 
 /**
@@ -128,10 +185,14 @@ export class UserService {
 
       // Store invitation in database
       const result = await db.query(
-        `INSERT INTO invitation_tokens (email, token, role_id, department_id, expires_at, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, email, token, role_id, department_id, expires_at, created_by, created_at`,
-        [input.email, token, input.roleId, input.departmentId, expiresAt, input.invitedBy]
+        `INSERT INTO invitation_tokens (email, token, role_id, department_id, expires_at, created_by,
+           payout_method, payout_phone, payout_bank_name, payout_bank_account)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, email, token, role_id, department_id, expires_at, created_by, created_at,
+                   payout_method, payout_phone, payout_bank_name, payout_bank_account`,
+        [input.email, token, input.roleId, input.departmentId, expiresAt, input.invitedBy,
+         input.payoutMethod || null, input.payoutPhone || null,
+         input.payoutBankName || null, input.payoutBankAccount || null]
       );
 
       const invitation = result.rows[0];
@@ -172,7 +233,8 @@ export class UserService {
   async validateInvitationToken(token: string): Promise<Invitation | null> {
     try {
       const result = await db.query(
-        `SELECT id, email, token, role_id, department_id, expires_at, used_at, created_by, created_at
+        `SELECT id, email, token, role_id, department_id, expires_at, used_at, created_by, created_at,
+                payout_method, payout_phone, payout_bank_name, payout_bank_account
          FROM invitation_tokens
          WHERE token = $1`,
         [token]
@@ -204,6 +266,10 @@ export class UserService {
         usedAt: invitation.used_at,
         createdBy: invitation.created_by,
         createdAt: invitation.created_at,
+        payoutMethod: invitation.payout_method,
+        payoutPhone: invitation.payout_phone,
+        payoutBankName: invitation.payout_bank_name,
+        payoutBankAccount: invitation.payout_bank_account,
       };
     } catch (error) {
       logger.error('Failed to validate invitation token', { error, token });
@@ -233,15 +299,46 @@ export class UserService {
       // Hash password
       const passwordHash = await authService.hashPassword(userData.password);
 
+      // Resolve role name to check if payout is required
+      const roleNameResult = await db.query('SELECT name FROM roles WHERE id = $1', [invitation.roleId]);
+      const roleName: string = roleNameResult.rows[0]?.name || '';
+      const requiresPayout = PAYABLE_ROLES.includes(roleName as any);
+
+      if (requiresPayout) {
+        // Use user-provided payout or fall back to invitation-preset payout
+        const effectivePayoutMethod = userData.payoutMethod || invitation.payoutMethod;
+        const effectivePayoutPhone = userData.payoutPhone || invitation.payoutPhone;
+        const effectivePayoutBankName = userData.payoutBankName || invitation.payoutBankName;
+        const effectivePayoutBankAccount = userData.payoutBankAccount || invitation.payoutBankAccount;
+
+        if (!effectivePayoutMethod) {
+          throw new Error('Payout method (MPESA or BANK) is required for your role');
+        }
+        if (effectivePayoutMethod === 'MPESA') {
+          if (!effectivePayoutPhone?.trim()) {
+            throw new Error('M-Pesa phone number is required');
+          }
+        } else if (effectivePayoutMethod === 'BANK') {
+          if (!effectivePayoutBankName?.trim()) {
+            throw new Error('Bank name is required');
+          }
+          if (!effectivePayoutBankAccount?.trim()) {
+            throw new Error('Bank account number is required');
+          }
+        }
+      }
+
       // Create user
       const result = await db.query(
         `INSERT INTO users (
-          email, password_hash, full_name, phone, country, 
-          role_id, department_id, language_preference, timezone
+          email, password_hash, full_name, phone, country,
+          role_id, department_id, language_preference, timezone,
+          payout_method, payout_phone, payout_bank_name, payout_bank_account
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING id, email, full_name, phone, country, role_id, department_id, 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING id, email, full_name, phone, country, role_id, department_id,
                   language_preference, timezone, two_fa_enabled, profile_photo_url,
+                  payout_method, payout_phone, payout_bank_name, payout_bank_account,
                   last_login, created_at, updated_at`,
         [
           userData.email,
@@ -253,6 +350,10 @@ export class UserService {
           invitation.departmentId,
           userData.languagePreference || 'en',
           userData.timezone || 'UTC',
+          userData.payoutMethod || invitation.payoutMethod || null,
+          userData.payoutPhone || invitation.payoutPhone || null,
+          userData.payoutBankName || invitation.payoutBankName || null,
+          userData.payoutBankAccount || invitation.payoutBankAccount || null,
         ]
       );
 
@@ -287,9 +388,15 @@ export class UserService {
                 u.github_username, u.language_preference, u.timezone, u.two_fa_enabled,
                 u.profile_photo_url, u.last_login, u.is_active, u.suspended_at,
                 u.suspension_reason, u.pending_email, u.created_at, u.updated_at,
-                r.name as role_name
+               u.payout_method, u.payout_phone, u.payout_bank_name, u.payout_bank_account,
+               u.payout_updated_at, u.payout_updated_by,
+                u.team_id, u.is_team_leader,
+                r.name as role_name,
+                d.name as department_name,
+                d.type as department_type
          FROM users u
          JOIN roles r ON u.role_id = r.id
+         LEFT JOIN departments d ON u.department_id = d.id
          WHERE u.id = $1`,
         [userId]
       );
@@ -438,6 +545,8 @@ export class UserService {
                u.github_username, u.language_preference, u.timezone, u.two_fa_enabled,
                u.profile_photo_url, u.last_login, u.is_active, u.suspended_at,
                u.suspension_reason, u.pending_email, u.created_at, u.updated_at,
+               u.payout_method, u.payout_phone, u.payout_bank_name, u.payout_bank_account,
+               u.payout_updated_at, u.payout_updated_by,
                r.name as role_name
         FROM users u
         JOIN roles r ON u.role_id = r.id
@@ -791,6 +900,8 @@ export class UserService {
       roleId: row.role_id,
       roleName,
       departmentId: row.department_id,
+      departmentName: row.department_name ?? undefined,
+      departmentType: row.department_type ?? undefined,
       githubUsername: row.github_username,
       languagePreference: row.language_preference,
       timezone: row.timezone,
@@ -801,9 +912,82 @@ export class UserService {
       suspendedAt: row.suspended_at,
       suspensionReason: row.suspension_reason,
       pendingEmail: row.pending_email,
+      payoutMethod: row.payout_method,
+      payoutPhone: row.payout_phone,
+      payoutBankName: row.payout_bank_name,
+      payoutBankAccount: row.payout_bank_account,
+      payoutUpdatedAt: row.payout_updated_at,
+      payoutUpdatedBy: row.payout_updated_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      // Developer team fields
+      teamId: row.team_id ?? undefined,
+      isTeamLeader: row.is_team_leader ?? false,
     };
+  }
+
+  /**
+   * Update payout details for a user.
+   * Only the specific higher-ups defined in PAYOUT_UPDATE_PERMISSIONS can change
+   * another user's payout details. Users cannot change their own payout details
+   * after registration.
+   */
+  async updatePayoutDetails(
+    targetUserId: string,
+    input: UpdatePayoutInput,
+    updatedBy: string,
+    updaterRole: string
+  ): Promise<User> {
+    // Fetch target user's role
+    const targetResult = await db.query(
+      `SELECT u.id, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
+      [targetUserId]
+    );
+    if (targetResult.rows.length === 0) throw new Error('User not found');
+    const targetRole: string = targetResult.rows[0].role_name;
+
+    // Check permission: updaterRole must be in the allowed list for targetRole
+    const allowedUpdaters = PAYOUT_UPDATE_PERMISSIONS[targetRole] ?? [];
+    if (!allowedUpdaters.includes(updaterRole)) {
+      throw new Error(
+        `Role ${updaterRole} is not permitted to update payout details for ${targetRole}`
+      );
+    }
+
+    // Validate payout input
+    if (!input.payoutMethod) throw new Error('Payout method is required');
+    if (input.payoutMethod === 'MPESA') {
+      if (!input.payoutPhone?.trim()) throw new Error('M-Pesa phone number is required');
+    } else if (input.payoutMethod === 'BANK') {
+      if (!input.payoutBankName?.trim()) throw new Error('Bank name is required');
+      if (!input.payoutBankAccount?.trim()) throw new Error('Bank account number is required');
+    }
+
+    const result = await db.query(
+      `UPDATE users
+       SET payout_method = $1, payout_phone = $2, payout_bank_name = $3,
+           payout_bank_account = $4, payout_updated_at = NOW(), payout_updated_by = $5,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING id, email, full_name, phone, country, role_id, department_id,
+                 language_preference, timezone, two_fa_enabled, profile_photo_url,
+                 payout_method, payout_phone, payout_bank_name, payout_bank_account,
+                 payout_updated_at, payout_updated_by,
+                 last_login, is_active, suspended_at, suspension_reason, pending_email,
+                 created_at, updated_at`,
+      [
+        input.payoutMethod,
+        input.payoutMethod === 'MPESA' ? input.payoutPhone!.trim() : null,
+        input.payoutMethod === 'BANK' ? input.payoutBankName!.trim() : null,
+        input.payoutMethod === 'BANK' ? input.payoutBankAccount!.trim() : null,
+        updatedBy,
+        targetUserId,
+      ]
+    );
+
+    const roleResult = await db.query('SELECT name FROM roles WHERE id = $1', [result.rows[0].role_id]);
+    logger.info('Payout details updated', { targetUserId, updatedBy, updaterRole, targetRole });
+    return this.mapUserFromDb(result.rows[0], roleResult.rows[0]?.name || '');
   }
 }
 

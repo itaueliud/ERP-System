@@ -1,10 +1,10 @@
 import { PaymentProcessingService, PaymentMethod, PaymentStatus } from './paymentService';
 import { db } from '../database/connection';
-import { jengaClient } from '../services/jenga';
+import { darajaClient } from '../services/daraja';
 
 // Mock dependencies
 jest.mock('../database/connection');
-jest.mock('../services/jenga');
+jest.mock('../services/daraja');
 jest.mock('../utils/logger');
 jest.mock('../config', () => ({
   config: {
@@ -20,11 +20,16 @@ jest.mock('../config', () => ({
       user: 'test',
       password: 'test',
     },
-    jenga: {
-      apiUrl: 'https://sandbox.jengahq.io',
-      apiKey: 'test-api-key',
-      merchantCode: 'test-merchant',
+    daraja: {
+      apiUrl: 'https://sandbox.safaricom.co.ke',
+      consumerKey: 'test-consumer-key',
+      consumerSecret: 'test-consumer-secret',
+      shortCode: '174379',
+      passKey: 'test-pass-key',
+      callbackUrl: 'http://localhost:3000',
       webhookSecret: 'test-webhook-secret',
+      b2cInitiatorName: 'testapi',
+      b2cSecurityCredential: 'test-credential',
     },
   },
 }));
@@ -51,12 +56,12 @@ describe('PaymentProcessingService', () => {
     mockVerifyWebhookSignature = jest.fn();
     mockGetPaymentStatus = jest.fn();
 
-    (jengaClient.initiateMpesaPayment as jest.Mock) = mockInitiateMpesaPayment;
-    (jengaClient.initiateAirtelPayment as jest.Mock) = mockInitiateAirtelPayment;
-    (jengaClient.initiateBankTransfer as jest.Mock) = mockInitiateBankTransfer;
-    (jengaClient.initiateCardPayment as jest.Mock) = mockInitiateCardPayment;
-    (jengaClient.verifyWebhookSignature as jest.Mock) = mockVerifyWebhookSignature;
-    (jengaClient.getPaymentStatus as jest.Mock) = mockGetPaymentStatus;
+    (darajaClient.initiateMpesaPayment as jest.Mock) = mockInitiateMpesaPayment;
+    (darajaClient.initiateAirtelPayment as jest.Mock) = mockInitiateAirtelPayment;
+    (darajaClient.initiateBankTransfer as jest.Mock) = mockInitiateBankTransfer;
+    (darajaClient.initiateCardPayment as jest.Mock) = mockInitiateCardPayment;
+    (darajaClient.verifyWebhookSignature as jest.Mock) = mockVerifyWebhookSignature;
+    (darajaClient.getPaymentStatus as jest.Mock) = mockGetPaymentStatus;
   });
 
   afterEach(() => {
@@ -1222,8 +1227,8 @@ describe('Payment Approval Workflow', () => {
         ],
       });
 
-      const jengaClient = require('../services/jenga').jengaClient;
-      jengaClient.initiateMpesaPayment = jest.fn().mockResolvedValue({
+      const darajaClientLocal = require('../services/daraja').darajaClient;
+      darajaClientLocal.initiateMpesaPayment = jest.fn().mockResolvedValue({
         requestId: 'req-123',
         transactionId: 'txn-123',
         status: 'INITIATED',
@@ -1374,8 +1379,8 @@ describe('Payment Approval Workflow', () => {
         ],
       });
 
-      const jengaClient = require('../services/jenga').jengaClient;
-      jengaClient.initiateBankTransfer = jest.fn().mockResolvedValue({
+      const darajaClientLocal = require('../services/daraja').darajaClient;
+      darajaClientLocal.initiateBankTransfer = jest.fn().mockResolvedValue({
         requestId: 'req-456',
         transactionId: 'txn-456',
         status: 'INITIATED',

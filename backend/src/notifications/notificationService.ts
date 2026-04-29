@@ -24,17 +24,19 @@ export enum NotificationType {
   TASK_ASSIGNED           = 'TASK_ASSIGNED',
   TASK_DUE                = 'TASK_DUE',
   // Doc §20 — additional required notification events
-  NEW_LEAD_ADDED          = 'NEW_LEAD_ADDED',          // Agent adds lead → notify Trainer (In-app + SMS)
-  COMMITMENT_PAYMENT_CONFIRMED = 'COMMITMENT_PAYMENT_CONFIRMED', // → Trainer + CFO (In-app + Email)
-  LEAD_BECOMES_PROJECT    = 'LEAD_BECOMES_PROJECT',    // → CTO (In-app + Email)
-  PAYMENT_APPROVED        = 'PAYMENT_APPROVED',        // CFO approves → EA (In-app)
-  AMOUNT_CHANGE_PROPOSED  = 'AMOUNT_CHANGE_PROPOSED',  // → CEO (In-app)
-  AMOUNT_CHANGE_CONFIRMED = 'AMOUNT_CHANGE_CONFIRMED', // → Proposer (In-app)
-  SIGNED_CONTRACT_UPLOADED = 'SIGNED_CONTRACT_UPLOADED', // → EA + CEO (In-app)
-  NEW_PLOTCONNECT_PROPERTY = 'NEW_PLOTCONNECT_PROPERTY', // → COO + CEO (In-app)
-  DAILY_REPORT_OVERDUE    = 'DAILY_REPORT_OVERDUE',    // → COO + CoS (Automated alert)
-  GITHUB_COMMIT_PR        = 'GITHUB_COMMIT_PR',        // → CTO (In-app)
-  NEW_USER_INVITED        = 'NEW_USER_INVITED',        // → Invited user (Email)
+  NEW_LEAD_ADDED          = 'NEW_LEAD_ADDED',
+  COMMITMENT_PAYMENT_CONFIRMED = 'COMMITMENT_PAYMENT_CONFIRMED',
+  LEAD_BECOMES_PROJECT    = 'LEAD_BECOMES_PROJECT',
+  PAYMENT_APPROVED        = 'PAYMENT_APPROVED',
+  AMOUNT_CHANGE_PROPOSED  = 'AMOUNT_CHANGE_PROPOSED',
+  AMOUNT_CHANGE_CONFIRMED = 'AMOUNT_CHANGE_CONFIRMED',
+  SIGNED_CONTRACT_UPLOADED = 'SIGNED_CONTRACT_UPLOADED',
+  NEW_PLOTCONNECT_PROPERTY = 'NEW_PLOTCONNECT_PROPERTY',
+  DAILY_REPORT_OVERDUE    = 'DAILY_REPORT_OVERDUE',
+  GITHUB_COMMIT_PR        = 'GITHUB_COMMIT_PR',
+  NEW_USER_INVITED        = 'NEW_USER_INVITED',
+  SECURITY_ALERT          = 'SECURITY_ALERT',          // → CEO + CoS (fraud/security events)
+  SYSTEM_ALERT            = 'SYSTEM_ALERT',            // → CEO + CTO + TECH_STAFF (uptime/infrastructure)
 }
 
 export enum DeliveryChannel {
@@ -70,6 +72,7 @@ export interface NotificationRecord {
   deliveryStatus: Record<string, DeliveryStatus>;
   read: boolean;
   readAt?: Date;
+  scheduledAt?: Date;
   createdAt: Date;
 }
 
@@ -238,7 +241,7 @@ export class NotificationService {
     params.push(limit, offset);
     const dataResult = await db.query(
       `SELECT n.id, n.user_id, n.type, n.priority, n.title, n.message,
-              n.data, n.delivery_status, n.read, n.read_at, n.created_at
+              n.data, n.delivery_status, n.read, n.read_at, n.scheduled_at, n.created_at
        FROM notifications n
        WHERE ${where}
        ORDER BY n.created_at DESC
@@ -506,6 +509,7 @@ export class NotificationService {
           : row.delivery_status ?? {},
       read: row.read,
       readAt: row.read_at,
+      scheduledAt: row.scheduled_at,
       createdAt: row.created_at,
     };
   }

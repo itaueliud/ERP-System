@@ -75,11 +75,26 @@ router.post('/service-amounts/changes/:id/:action', async (req: Request, res: Re
 });
 
 // ─── Budget Requests ──────────────────────────────────────────────────────────
-router.get('/budget-requests', async (_req, res) => {
-  const r = await safeQuery(
-    `SELECT id, requester, amount, purpose, status, created_at as "createdAt"
-     FROM budget_requests ORDER BY created_at DESC`
-  );
+router.get('/budget-requests', async (req, res) => {
+  const userId = (req as any).user?.id;
+  const role = (req as any).user?.role;
+  const canSeeAll = ['CFO', 'CoS', 'CEO', 'CFO_ASSISTANT'].includes(role);
+
+  const r = canSeeAll
+    ? await safeQuery(
+        `SELECT br.id, u.full_name AS requester, br.amount, br.purpose, br.department, br.status, br.created_at as "createdAt"
+         FROM budget_requests br
+         LEFT JOIN users u ON u.id = br.requester_id
+         ORDER BY br.created_at DESC`
+      )
+    : await safeQuery(
+        `SELECT br.id, u.full_name AS requester, br.amount, br.purpose, br.department, br.status, br.created_at as "createdAt"
+         FROM budget_requests br
+         LEFT JOIN users u ON u.id = br.requester_id
+         WHERE br.requester_id = $1
+         ORDER BY br.created_at DESC`,
+        [userId]
+      );
   res.json({ success: true, data: r.rows });
 });
 
@@ -88,10 +103,28 @@ router.post('/budget-requests', async (req: Request, res: Response) => {
     const { amount, purpose, department } = req.body;
     const requestedBy = (req as any).user?.id;
     const r = await safeQuery(
-      `INSERT INTO budget_requests (requester, amount, purpose, department, status, created_by, created_at)
-       VALUES ($1, $2, $3, $4, 'PENDING', $5, NOW()) RETURNING id`,
-      [(req as any).user?.name || requestedBy, amount, purpose, department, requestedBy]
+      `INSERT INTO budget_requests (requester_id, amount, purpose, department, status, created_at)
+       VALUES ($1, $2, $3, $4, 'PENDING', NOW()) RETURNING id`,
+      [requestedBy, amount, purpose, department]
     );
+
+    // Notify CFO and CoS about the new budget request
+    const { notificationService, NotificationType, NotificationPriority } = await import('../notifications/notificationService');
+    const approvers = await safeQuery(
+      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.name IN ('CFO', 'CoS') AND u.is_active = TRUE`
+    );
+    const requesterResult = await safeQuery(`SELECT full_name FROM users WHERE id = $1`, [requestedBy]);
+    const requesterName = requesterResult.rows[0]?.full_name || 'A team member';
+    for (const approver of approvers.rows) {
+      notificationService.sendNotification({
+        userId: approver.id,
+        type: NotificationType.PAYMENT_APPROVAL,
+        priority: NotificationPriority.HIGH,
+        title: 'New Budget Request',
+        message: `${requesterName} submitted a budget request of KSh ${Number(amount).toLocaleString()} for: ${purpose}`,
+      }).catch(() => {});
+    }
+
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch (e: any) {
     res.status(400).json({ success: false, error: e.message || 'Failed to submit budget request' });
@@ -101,15 +134,73 @@ router.post('/budget-requests', async (req: Request, res: Response) => {
 router.post('/budget-requests/:id/:action', async (req: Request, res: Response) => {
   const { id, action } = req.params;
   const status = action === 'approve' ? 'APPROVED' : 'REJECTED';
-  await safeQuery(`UPDATE budget_requests SET status = $1 WHERE id = $2`, [status, id]);
+  await safeQuery(`UPDATE budget_requests SET status = $1, reviewed_by = $2, reviewed_at = NOW() WHERE id = $3`, [status, (req as any).user?.id, id]);
+
+  // Notify the requester
+  try {
+    const { notificationService, NotificationType, NotificationPriority } = await import('../notifications/notificationService');
+    const br = await safeQuery(`SELECT requester_id, purpose, amount FROM budget_requests WHERE id = $1`, [id]);
+    if (br.rows.length > 0) {
+      const { requester_id, purpose, amount } = br.rows[0];
+      notificationService.sendNotification({
+        userId: requester_id,
+        type: NotificationType.PAYMENT_APPROVAL,
+        priority: NotificationPriority.HIGH,
+        title: `Budget Request ${status === 'APPROVED' ? 'Approved' : 'Rejected'}`,
+        message: `Your budget request of KSh ${Number(amount).toLocaleString()} for "${purpose}" has been ${status.toLowerCase()}.`,
+      }).catch(() => {});
+    }
+  } catch { /* non-blocking */ }
+
   res.json({ success: true });
 });
 
+// Execute an approved budget request (CFO / CoS only)
+router.post('/budget-requests/:id/execute', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const executorId = (req as any).user?.id;
+  const executorRole = (req as any).user?.role;
+
+  if (!['CFO', 'CoS', 'CEO'].includes(executorRole)) {
+    return res.status(403).json({ success: false, error: 'Only CFO, CoS or CEO can execute budget requests' });
+  }
+
+  const existing = await safeQuery(`SELECT status, requester_id, purpose, amount FROM budget_requests WHERE id = $1`, [id]);
+  if (!existing.rows.length) return res.status(404).json({ success: false, error: 'Budget request not found' });
+  if (existing.rows[0].status !== 'APPROVED') {
+    return res.status(400).json({ success: false, error: 'Only approved budget requests can be executed' });
+  }
+
+  await safeQuery(
+    `UPDATE budget_requests SET status = 'EXECUTED', executed_by = $1, executed_at = NOW() WHERE id = $2`,
+    [executorId, id]
+  );
+
+  // Notify the requester
+  try {
+    const { notificationService, NotificationType, NotificationPriority } = await import('../notifications/notificationService');
+    const { requester_id, purpose, amount } = existing.rows[0];
+    notificationService.sendNotification({
+      userId: requester_id,
+      type: NotificationType.PAYMENT_APPROVAL,
+      priority: NotificationPriority.HIGH,
+      title: 'Budget Request Executed',
+      message: `Your approved budget request of KSh ${Number(amount).toLocaleString()} for "${purpose}" has been executed — funds released.`,
+    }).catch(() => {});
+  } catch { /* non-blocking */ }
+
+  return res.json({ success: true });
+});
+
 // ─── Expense Reports ──────────────────────────────────────────────────────────
-router.get('/expense-reports', async (_req, res) => {
+router.get('/expense-reports', async (req, res) => {
+  const userId = (req as any).user?.id;
   const r = await safeQuery(
-    `SELECT id, amount, category, description, status, created_at as "createdAt"
-     FROM expense_reports ORDER BY created_at DESC`
+    `SELECT er.id, er.amount, er.category, er.description, er.status, er.created_at as "createdAt"
+     FROM expense_reports er
+     WHERE er.requester_id = $1
+     ORDER BY er.created_at DESC`,
+    [userId]
   );
   res.json({ success: true, data: r.rows });
 });
@@ -119,9 +210,9 @@ router.post('/expense-reports', async (req: Request, res: Response) => {
     const { amount, category, description } = req.body;
     const submittedBy = (req as any).user?.id;
     const r = await safeQuery(
-      `INSERT INTO expense_reports (amount, category, description, status, submitted_by, created_at)
-       VALUES ($1, $2, $3, 'PENDING', $4, NOW()) RETURNING id`,
-      [amount, category, description, submittedBy]
+      `INSERT INTO expense_reports (requester_id, amount, category, description, status, created_at)
+       VALUES ($1, $2, $3, $4, 'PENDING', NOW()) RETURNING id`,
+      [submittedBy, amount, category, description]
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch (e: any) {
@@ -132,8 +223,12 @@ router.post('/expense-reports', async (req: Request, res: Response) => {
 // ─── Tech Funding Requests ────────────────────────────────────────────────────
 router.get('/tech-funding-requests', async (_req, res) => {
   const r = await safeQuery(
-    `SELECT id, project, amount, justification, status, created_at as "createdAt"
-     FROM tech_funding_requests ORDER BY created_at DESC`
+    `SELECT t.id, t.project, t.amount, t.justification, t.status,
+            t.created_at as "createdAt",
+            u.full_name as "requesterName", u.email as "requesterEmail"
+     FROM tech_funding_requests t
+     LEFT JOIN users u ON u.id = t.requested_by
+     ORDER BY t.created_at DESC`
   );
   res.json({ success: true, data: r.rows });
 });
@@ -150,6 +245,33 @@ router.post('/tech-funding-requests', async (req: Request, res: Response) => {
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch (e: any) {
     res.status(400).json({ success: false, error: e.message || 'Failed to submit funding request' });
+  }
+});
+
+router.patch('/tech-funding-requests/:id/:action', async (req: Request, res: Response) => {
+  try {
+    const { id, action } = req.params;
+    const approverId = (req as any).user?.id;
+    const approverRole = (req as any).user?.role;
+    const allowed = ['CEO', 'CoS', 'CFO', 'COO'];
+    if (!allowed.includes(approverRole)) {
+      return res.status(403).json({ success: false, error: 'Not authorised to approve tech funding' });
+    }
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ success: false, error: 'Action must be approve or reject' });
+    }
+    const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
+    const { rejectionReason } = req.body;
+    const r = await safeQuery(
+      `UPDATE tech_funding_requests
+       SET status = $1, approved_by = $2, approved_at = NOW(), rejection_reason = $3
+       WHERE id = $4 RETURNING id, status`,
+      [newStatus, approverId, rejectionReason || null, id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Request not found' });
+    return res.json({ success: true, data: r.rows[0] });
+  } catch (e: any) {
+    return res.status(400).json({ success: false, error: e.message || 'Failed to update request' });
   }
 });
 
@@ -171,14 +293,49 @@ router.put('/finance/tot-rate', async (req: Request, res: Response) => {
 // ─── Trainers Performance ─────────────────────────────────────────────────────
 router.get('/trainers/performance', async (_req, res) => {
   const r = await safeQuery(
-    `SELECT u.id, u.full_name as name, u.country,
-            COUNT(DISTINCT a.id) as "agentsCount",
-            COALESCE(AVG(a.performance_score), 0) as "performanceScore"
+    `SELECT u.id, u.full_name AS name, u.email, u.country,
+            COUNT(DISTINCT ag.id)  AS "agentsCount",
+            COUNT(DISTINCT cl.id)  AS "assignedClients"
      FROM users u
-     LEFT JOIN agents a ON a.trainer_id = u.id
-     WHERE u.role_name = 'TRAINER' OR u.role_name = 'HEAD_OF_TRAINERS'
-     GROUP BY u.id, u.full_name, u.country
-     ORDER BY "performanceScore" DESC`
+     JOIN roles ro ON ro.id = u.role_id
+     LEFT JOIN users ag ON ag.trainer_id = u.id
+     LEFT JOIN clients cl ON cl.trainer_id = u.id
+       AND cl.status IN ('NEGOTIATION', 'CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED')
+     WHERE ro.name IN ('TRAINER', 'HEAD_OF_TRAINERS')
+       AND u.is_active = TRUE
+     GROUP BY u.id, u.full_name, u.email, u.country
+     ORDER BY u.full_name ASC`
+  );
+  res.json({ success: true, data: r.rows });
+});
+
+// ─── Agents Performance (CFO / CoS view) ─────────────────────────────────────
+router.get('/agents/performance', async (_req, res) => {
+  const r = await safeQuery(
+    `SELECT u.id, u.full_name as name, u.country, u.email,
+            u.payout_method as "payoutMethod",
+            u.payout_phone as "payoutPhone",
+            u.payout_bank_name as "payoutBankName",
+            u.payout_bank_account as "payoutBankAccount",
+            COUNT(DISTINCT c.id) as "totalClients",
+            COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'CLOSED_WON') as "closedDeals",
+            COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'COMPLETED'), 0) as "totalCommissions"
+     FROM users u
+     JOIN roles r ON r.id = u.role_id AND r.name = 'AGENT'
+     LEFT JOIN clients c ON c.agent_id = u.id
+     LEFT JOIN payments p ON p.client_id = c.id
+     WHERE u.is_active = TRUE
+     GROUP BY u.id ORDER BY u.full_name`
+  );
+  res.json({ success: true, data: r.rows });
+});
+
+// ─── Marketing Leads ──────────────────────────────────────────────────────────
+router.get('/marketing/leads', async (_req, res) => {
+  const r = await safeQuery(
+    `SELECT id, name, email, phone, country, status, created_at as "createdAt"
+     FROM clients WHERE status IN ('NEW_LEAD','CONVERTED','LEAD_ACTIVATED','LEAD_QUALIFIED')
+     ORDER BY created_at DESC LIMIT 100`
   );
   res.json({ success: true, data: r.rows });
 });
@@ -275,8 +432,10 @@ router.get('/commissions', async (_req, res) => {
 router.get('/commissions/me', async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
   const r = await safeQuery(
-    `SELECT id, amount, type, status, created_at as "createdAt"
-     FROM commissions WHERE agent_id = $1 ORDER BY created_at DESC`,
+    `SELECT id, client_id as "clientId", client_name as "clientName",
+            amount, commission_rate as "commissionRate", status,
+            paid_at as "paidAt", created_at as "createdAt"
+     FROM agent_commissions WHERE agent_id = $1 ORDER BY created_at DESC`,
     [userId]
   );
   res.json({ success: true, data: r.rows });
@@ -416,26 +575,53 @@ router.get('/reports/tax/generate', async (_req, res) => {
 // ─── Training (additional) ────────────────────────────────────────────────────
 router.get('/training/agent-records', async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
-  const r = await safeQuery(
-    `SELECT a.id, u.full_name as name, a.phone, a.status, a.performance_score as "performanceScore",
-            a.trainer_id as "trainerId", a.created_at as "createdAt"
-     FROM agents a
-     LEFT JOIN users u ON u.id = a.user_id
-     WHERE a.trainer_id = $1
-     ORDER BY a.created_at DESC`,
-    [userId]
-  );
+  const userRole = (req as any).user?.role;
+
+  // HEAD_OF_TRAINERS: return all agents under trainers in their country
+  // TRAINER: return only their own directly assigned agents
+  let query: string;
+  let params: any[];
+
+  if (userRole === 'HEAD_OF_TRAINERS') {
+    query = `
+      SELECT a.id, u.full_name as name, a.phone, a.status,
+             a.performance_score as "performanceScore",
+             a.trainer_id as "trainerId",
+             tu.full_name as "trainerName",
+             a.created_at as "createdAt"
+      FROM agents a
+      LEFT JOIN users u ON u.id = a.user_id
+      LEFT JOIN users tu ON tu.id = a.trainer_id
+      JOIN users hot ON hot.id = $1
+      WHERE tu.country = hot.country
+      ORDER BY a.created_at DESC`;
+    params = [userId];
+  } else {
+    query = `
+      SELECT a.id, u.full_name as name, a.phone, a.status,
+             a.performance_score as "performanceScore",
+             a.trainer_id as "trainerId", a.created_at as "createdAt"
+      FROM agents a
+      LEFT JOIN users u ON u.id = a.user_id
+      WHERE a.trainer_id = $1
+      ORDER BY a.created_at DESC`;
+    params = [userId];
+  }
+
+  const r = await safeQuery(query, params);
   res.json({ success: true, data: r.rows });
 });
 
 router.get('/training/assignments', async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
   const r = await safeQuery(
-    `SELECT ta.id, tc.title as "courseName", ta.agent_id as "agentId",
-            ta.progress, ta.status, ta.due_date as "dueDate", ta.assigned_at as "assignedAt"
+    `SELECT ta.id, tc.title as "courseTitle", tc.description, tc.duration_hours as "durationHours",
+            ta.status, ta.progress, ta.due_date as "dueDate",
+            ta.started_at as "startedAt", ta.completed_at as "completedAt",
+            ta.assigned_at as "assignedAt"
      FROM training_assignments ta
      JOIN training_courses tc ON tc.id = ta.course_id
-     WHERE ta.assigned_by = $1
+     WHERE ta.agent_id = $1
      ORDER BY ta.assigned_at DESC`,
     [userId]
   );
@@ -467,18 +653,79 @@ router.get('/achievements', async (req: Request, res: Response) => {
 // ─── Dashboard agent-metrics ──────────────────────────────────────────────────
 router.get('/dashboard/agent-metrics', async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
-  const r = await safeQuery(
+
+  const clientsR = await safeQuery(
     `SELECT
-       COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'ACTIVE') as "activeClients",
-       COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'LEAD') as "activeLeads",
-       COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'PROJECT') as "convertedProjects",
-       COALESCE(SUM(comm.amount) FILTER (WHERE comm.status = 'PAID'), 0) as "totalCommissions"
-     FROM clients c
-     LEFT JOIN commissions comm ON comm.agent_id = $1
-     WHERE c.agent_id = $1`,
+       COUNT(*) FILTER (WHERE status = 'NEW_LEAD')       AS "newLeads",
+       COUNT(*) FILTER (WHERE status = 'CONVERTED')      AS "converted",
+       COUNT(*) FILTER (WHERE status = 'LEAD_ACTIVATED') AS "leadActivated",
+       COUNT(*) FILTER (WHERE status = 'LEAD_QUALIFIED') AS "leadQualified",
+       COUNT(*) FILTER (WHERE status = 'NEGOTIATION')    AS "negotiation",
+       COUNT(*) FILTER (WHERE status = 'CLOSED_WON')     AS "closedDeals",
+       COUNT(*)                                           AS "totalClients"
+     FROM clients WHERE agent_id = $1`,
     [userId]
   );
-  res.json({ success: true, data: r.rows[0] || {} });
+
+  const commR = await safeQuery(
+    `SELECT
+       COALESCE(SUM(amount), 0)                              AS "totalCommissions",
+       COALESCE(SUM(amount) FILTER (WHERE status='PENDING'), 0) AS "pendingCommissions"
+     FROM agent_commissions WHERE agent_id = $1`,
+    [userId]
+  );
+
+  const trainingR = await safeQuery(
+    `SELECT
+       COUNT(*) FILTER (WHERE ta.status = 'COMPLETED') AS "completedCourses",
+       COUNT(*)                                         AS "totalCourses",
+       COALESCE(AVG(ta.progress), 0)                   AS "avgProgress"
+     FROM training_assignments ta WHERE ta.agent_id = $1`,
+    [userId]
+  );
+
+  const c = clientsR.rows[0] || {};
+  const cm = commR.rows[0] || {};
+  const tr = trainingR.rows[0] || {};
+
+  const totalClients   = Number(c.totalClients   || 0);
+  const closedDeals    = Number(c.closedDeals    || 0);
+  const totalComm      = Number(cm.totalCommissions || 0);
+  const pendingComm    = Number(cm.pendingCommissions || 0);
+  const avgProgress    = Number(tr.avgProgress   || 0);
+  const completedCourses = Number(tr.completedCourses || 0);
+  const totalCourses   = Number(tr.totalCourses  || 0);
+
+  // KPI: weighted score from closed deals, training progress, client count
+  const kpiScore = totalClients === 0 && totalCourses === 0 ? null :
+    Math.min(100, Math.round(
+      (closedDeals / Math.max(totalClients, 1)) * 40 +
+      avgProgress * 0.4 +
+      Math.min(totalClients / 10, 1) * 20
+    ));
+
+  res.json({
+    success: true,
+    data: {
+      totalClients,
+      closedDeals,
+      totalCommissions:   totalComm,
+      pendingCommissions: pendingComm,
+      trainingProgress:   Math.round(avgProgress),
+      completedCourses,
+      totalCourses,
+      kpiScore,
+      // pipeline breakdown
+      newLeads:      Number(c.newLeads      || 0),
+      converted:     Number(c.converted     || 0),
+      leadActivated: Number(c.leadActivated || 0),
+      leadQualified: Number(c.leadQualified || 0),
+      negotiation:   Number(c.negotiation   || 0),
+      // placeholder metrics (can be wired to real data later)
+      attendanceRate:     null,
+      clientSatisfaction: null,
+    },
+  });
 });
 
 // ─── Chat messages (alias) ────────────────────────────────────────────────────
@@ -536,9 +783,9 @@ router.post('/liaison-requests', async (req: Request, res: Response) => {
        VALUES ($1, $2, $3, $4, 'PENDING', NOW()) RETURNING id`,
       [requesterId, clientId, brief, priority || 'MEDIUM']
     );
-    res.status(201).json({ success: true, data: r.rows[0] });
+    return res.status(201).json({ success: true, data: r.rows[0] });
   } catch (e: any) {
-    res.status(400).json({ success: false, error: e.message || 'Failed to send brief' });
+    return res.status(400).json({ success: false, error: e.message || 'Failed to send brief' });
   }
 });
 

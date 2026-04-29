@@ -25,6 +25,11 @@ export interface DailyReport {
   hoursWorked?: number;
   submittedAt: Date;
   createdAt: Date;
+  // Sender identity — populated when fetched via executive/team routes
+  userName?: string;
+  userEmail?: string;
+  userRole?: string;
+  userDepartment?: string;
 }
 
 export interface ListReportsFilters {

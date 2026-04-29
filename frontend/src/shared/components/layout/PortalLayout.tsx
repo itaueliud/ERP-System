@@ -1,78 +1,50 @@
+/**
+ * PortalLayout — Modern flat design system
+ * Inspired by IEBC, HELB, eCitizen Kenya portals.
+ * Clean white cards, strong sidebar, accessible colors, no glassmorphism.
+ * Chat panel is a collapsible right-side drawer — not a floating overlay.
+ */
 import React, { useState } from 'react';
 import type { PortalTheme } from '../../theme/portalThemes';
 import { TSTEmblem } from '../TSTLogo';
+import type { FAQCategory } from './FAQPanel';
+import { FAQPanel } from './FAQPanel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface NavItem {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  badge?: number;
-}
-
-export interface PortalUser {
-  name: string;
-  email: string;
-  role: string;
-  avatarUrl?: string;
-}
-
+export interface NavItem { id: string; label: string; icon: React.ReactNode; badge?: number; }
+export interface PortalUser { name: string; email: string; role: string; avatarUrl?: string; }
 export interface PortalLayoutProps {
-  theme: PortalTheme;
-  user: PortalUser;
-  navItems: NavItem[];
-  activeSection: string;
-  onSectionChange: (id: string) => void;
-  onLogout?: () => void;
-  children: React.ReactNode;
+  theme: PortalTheme; user: PortalUser; navItems: NavItem[];
+  activeSection: string; onSectionChange: (id: string) => void;
+  onLogout?: () => void; children: React.ReactNode;
+  portalName?: string;
+  notifications?: any[];
+  onNotificationRead?: (id: string) => void;
+  /** FAQ data — when provided a ? button appears in the top bar */
+  faqs?: FAQCategory[];
 }
 
-// ─── Stat Card — Neumorphism ──────────────────────────────────────────────────
-
+// ─── Stat Card ────────────────────────────────────────────────────────────────
 export interface StatCardProps {
-  label: string;
-  value: string | number;
-  icon?: React.ReactNode;
-  trend?: { value: number; up: boolean };
-  color?: string;
+  label: string; value: string | number; icon?: React.ReactNode;
+  trend?: { value: number; up: boolean }; color?: string;
 }
-
-export function StatCard({ label, value, icon, trend, color = '#6d28d9' }: StatCardProps) {
+export function StatCard({ label, value, icon, trend, color = '#1d4ed8' }: StatCardProps) {
   return (
-    <div
-      className="rounded-2xl p-5 flex flex-col gap-3 transition-all duration-200 hover:scale-[1.02]"
-      style={{
-        background: 'linear-gradient(145deg, #f0f4ff, #e8ecf8)',
-        boxShadow: '6px 6px 14px #c8cde0, -6px -6px 14px #ffffff',
-      }}
-    >
+    <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
         {icon && (
-          <span
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
-            style={{
-              background: `linear-gradient(135deg, ${color}dd, ${color})`,
-              boxShadow: `0 4px 12px ${color}55`,
-            }}
-          >
+          <span className="w-10 h-10 rounded-lg flex items-center justify-center text-white flex-shrink-0"
+            style={{ backgroundColor: color }}>
             {icon}
           </span>
         )}
       </div>
       <div className="flex items-end justify-between">
-        <span className="text-2xl font-bold text-gray-800">{value}</span>
+        <span className="text-2xl font-bold text-slate-900">{value}</span>
         {trend && (
-          <span
-            className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
-              trend.up ? 'text-emerald-600' : 'text-red-500'
-            }`}
-            style={{
-              background: trend.up ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
-              boxShadow: trend.up ? 'inset 1px 1px 3px rgba(16,185,129,0.2)' : 'inset 1px 1px 3px rgba(239,68,68,0.2)',
-            }}
-          >
+          <span className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-md ${trend.up ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
             {trend.up ? '↑' : '↓'} {Math.abs(trend.value)}%
           </span>
         )}
@@ -82,124 +54,71 @@ export function StatCard({ label, value, icon, trend, color = '#6d28d9' }: StatC
 }
 
 // ─── Section Header ───────────────────────────────────────────────────────────
-
 export function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between mb-6">
+    <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-        {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+        <h1 className="text-xl font-bold text-slate-900">{title}</h1>
+        {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
       </div>
-      {action && <div>{action}</div>}
+      {action && <div className="flex-shrink-0">{action}</div>}
     </div>
   );
 }
 
-// ─── Portal Button — Glassmorphism primary / Neumorphism secondary ────────────
-
-export function PortalButton({
-  children, onClick, variant = 'primary', size = 'md', color, disabled, fullWidth, icon,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
+// ─── Portal Button ────────────────────────────────────────────────────────────
+export function PortalButton({ children, onClick, variant = 'primary', size = 'md', color, disabled, fullWidth, icon, type = 'button' }: {
+  children: React.ReactNode; onClick?: () => void;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
-  size?: 'sm' | 'md' | 'lg';
-  color?: string;
-  disabled?: boolean;
-  fullWidth?: boolean;
-  icon?: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg'; color?: string; disabled?: boolean; fullWidth?: boolean; icon?: React.ReactNode;
+  type?: 'button' | 'submit' | 'reset';
 }) {
-  const sizes = { sm: 'px-3 py-1.5 text-xs', md: 'px-4 py-2 text-sm', lg: 'px-6 py-3 text-base' };
+  const sz = { sm: 'px-3 py-1.5 text-xs', md: 'px-4 py-2.5 text-sm', lg: 'px-6 py-3 text-base' }[size];
+  const base = `inline-flex items-center gap-2 font-semibold rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1
+    ${sz} ${fullWidth ? 'w-full justify-center' : ''}
+    ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer active:scale-[0.98]'}`;
 
-  const getStyle = (): React.CSSProperties => {
-    if (disabled) return {};
-    if (variant === 'primary' && color) {
-      return {
-        background: `linear-gradient(135deg, ${color}ee, ${color})`,
-        boxShadow: `0 4px 15px ${color}44, inset 0 1px 0 rgba(255,255,255,0.2)`,
-        backdropFilter: 'blur(8px)',
-      };
-    }
-    if (variant === 'secondary') {
-      return {
-        background: 'linear-gradient(145deg, #f0f4ff, #e8ecf8)',
-        boxShadow: '4px 4px 8px #c8cde0, -4px -4px 8px #ffffff',
-      };
-    }
-    if (variant === 'danger') {
-      return {
-        background: 'linear-gradient(135deg, #ef4444dd, #dc2626)',
-        boxShadow: '0 4px 12px rgba(239,68,68,0.35)',
-      };
-    }
-    return {};
+  const styles: Record<string, React.CSSProperties> = {
+    primary:   { backgroundColor: color || '#1d4ed8', color: '#fff' },
+    secondary: { backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0' },
+    ghost:     { backgroundColor: 'transparent', color: '#475569' },
+    danger:    { backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' },
   };
 
-  const baseClass = `inline-flex items-center gap-2 font-medium rounded-xl transition-all duration-200 focus:outline-none
-    ${sizes[size]}
-    ${fullWidth ? 'w-full justify-center' : ''}
-    ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer active:scale-[0.97]'}
-    ${variant === 'primary' ? 'text-white' : ''}
-    ${variant === 'secondary' ? 'text-gray-700' : ''}
-    ${variant === 'ghost' ? 'text-gray-600 hover:bg-white/60' : ''}
-    ${variant === 'danger' ? 'text-white' : ''}
-  `;
-
   return (
-    <button onClick={onClick} disabled={disabled} style={getStyle()} className={baseClass}>
+    <button type={type} onClick={onClick} disabled={disabled} style={disabled ? {} : styles[variant]} className={base}>
       {icon && <span className="flex-shrink-0">{icon}</span>}
       {children}
     </button>
   );
 }
 
-// ─── Data Table — Glass card ──────────────────────────────────────────────────
-
-export function DataTable<T extends Record<string, any>>({
-  columns, rows, emptyMessage = 'No data',
-}: {
+// ─── Data Table ───────────────────────────────────────────────────────────────
+export function DataTable<T extends Record<string, any>>({ columns, rows, emptyMessage = 'No data' }: {
   columns: { key: string; label: string; render?: (val: any, row: T) => React.ReactNode }[];
-  rows: T[];
-  emptyMessage?: string;
+  rows: T[]; emptyMessage?: string;
 }) {
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{
-        background: 'rgba(255,255,255,0.75)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255,255,255,0.6)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.06)',
-      }}
-    >
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: 'rgba(248,250,255,0.9)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-              {columns.map((col) => (
-                <th key={col.key} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              {columns.map(col => (
+                <th key={col.key} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                   {col.label}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-100">
             {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="text-center py-12 text-gray-400">{emptyMessage}</td>
-              </tr>
+              <tr><td colSpan={columns.length} className="text-center py-12 text-slate-400 text-sm">{emptyMessage}</td></tr>
             ) : rows.map((row, i) => (
-              <tr
-                key={i}
-                className="transition-colors"
-                style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.9)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                {columns.map((col) => (
-                  <td key={col.key} className="px-4 py-3 text-gray-700">
-                    {col.render ? col.render(row[col.key], row) : row[col.key]}
+              <tr key={i} className="hover:bg-slate-50 transition-colors">
+                {columns.map(col => (
+                  <td key={col.key} className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                    {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '—')}
                   </td>
                 ))}
               </tr>
@@ -212,50 +131,71 @@ export function DataTable<T extends Record<string, any>>({
 }
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
-
 export function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, [string, string]> = {
-    ACTIVE:              ['rgba(16,185,129,0.12)',  '#059669'],
-    COMPLETED:           ['rgba(59,130,246,0.12)',  '#2563eb'],
-    PENDING:             ['rgba(245,158,11,0.12)',  '#d97706'],
-    PENDING_APPROVAL:    ['rgba(245,158,11,0.12)',  '#d97706'],
-    FAILED:              ['rgba(239,68,68,0.12)',   '#dc2626'],
-    CANCELLED:           ['rgba(107,114,128,0.12)', '#6b7280'],
-    LEAD:                ['rgba(139,92,246,0.12)',  '#7c3aed'],
-    PROJECT:             ['rgba(59,130,246,0.12)',  '#2563eb'],
-    QUALIFIED_LEAD:      ['rgba(99,102,241,0.12)',  '#4f46e5'],
-    PENDING_COMMITMENT:  ['rgba(249,115,22,0.12)',  '#ea580c'],
-    IN_PROGRESS:         ['rgba(6,182,212,0.12)',   '#0891b2'],
-    NOT_STARTED:         ['rgba(107,114,128,0.12)', '#6b7280'],
-    VERIFIED:            ['rgba(16,185,129,0.12)',  '#059669'],
-    FILED:               ['rgba(16,185,129,0.12)',  '#059669'],
-    DRAFT:               ['rgba(107,114,128,0.12)', '#6b7280'],
-    APPROVED:            ['rgba(16,185,129,0.12)',  '#059669'],
-    REJECTED:            ['rgba(239,68,68,0.12)',   '#dc2626'],
-    SUSPENDED:           ['rgba(239,68,68,0.12)',   '#dc2626'],
+  const s = (status || '').toUpperCase();
+  const map: Record<string, string> = {
+    ACTIVE: 'bg-green-100 text-green-800',
+    COMPLETED: 'bg-blue-100 text-blue-800',
+    APPROVED: 'bg-green-100 text-green-800',
+    EXECUTED: 'bg-green-100 text-green-800',
+    CLOSED_WON: 'bg-green-100 text-green-800',
+    VERIFIED: 'bg-green-100 text-green-800',
+    FILED: 'bg-green-100 text-green-800',
+    PENDING: 'bg-amber-100 text-amber-800',
+    PENDING_APPROVAL: 'bg-amber-100 text-amber-800',
+    PENDING_COMMITMENT: 'bg-orange-100 text-orange-800',
+    IN_PROGRESS: 'bg-blue-100 text-blue-800',
+    DRAFT: 'bg-slate-100 text-slate-600',
+    NOT_STARTED: 'bg-slate-100 text-slate-600',
+    FAILED: 'bg-red-100 text-red-700',
+    REJECTED: 'bg-red-100 text-red-700',
+    CANCELLED: 'bg-slate-100 text-slate-600',
+    SUSPENDED: 'bg-red-100 text-red-700',
+    NEW_LEAD: 'bg-purple-100 text-purple-800',
+    CONVERTED: 'bg-indigo-100 text-indigo-800',
+    LEAD_ACTIVATED: 'bg-blue-100 text-blue-800',
+    LEAD_QUALIFIED: 'bg-cyan-100 text-cyan-800',
+    NEGOTIATION: 'bg-orange-100 text-orange-800',
+    PUBLISHED: 'bg-green-100 text-green-800',
+    SUBMITTED: 'bg-blue-100 text-blue-800',
+    UNDER_REVIEW: 'bg-blue-100 text-blue-800',
+    OVERDUE: 'bg-red-100 text-red-700',
   };
-  const [bg, text] = map[status] ?? ['rgba(107,114,128,0.12)', '#6b7280'];
+  const cls = map[s] || 'bg-slate-100 text-slate-600';
+  const labels: Record<string, string> = {
+    UNDER_REVIEW: 'Under Review',
+    CLOSED_WON: 'Closed Won',
+    NEW_LEAD: 'New Lead',
+    LEAD_ACTIVATED: 'Lead Activated',
+    LEAD_QUALIFIED: 'Lead Qualified',
+    IN_PROGRESS: 'In Progress',
+    NOT_STARTED: 'Not Started',
+    PENDING_APPROVAL: 'Pending Approval',
+    PENDING_COMMITMENT: 'Pending Commitment',
+  };
+  const label = labels[s] || s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
   return (
-    <span
-      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
-      style={{ background: bg, color: text, border: `1px solid ${text}22` }}
-    >
-      {status.replace(/_/g, ' ')}
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold ${cls}`}>
+      {label}
     </span>
   );
 }
 
 // ─── Portal Layout ────────────────────────────────────────────────────────────
-
-export function PortalLayout({ theme, user, navItems, activeSection, onSectionChange, onLogout, children }: PortalLayoutProps) {
+export function PortalLayout({
+  theme, user, navItems, activeSection, onSectionChange, onLogout, children, portalName,
+  notifications = [], onNotificationRead, faqs,
+}: PortalLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen, setMobileOpen]   = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [profileForm, setProfileForm] = useState({ name: user.name, email: user.email });
-  const [profileMsg, setProfileMsg] = useState('');
+  const [notifOpen, setNotifOpen]     = useState(false);
+  const [faqOpen, setFaqOpen]         = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: user.name });
+  const [profileMsg, setProfileMsg]   = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
 
-  const initials = user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const initials   = user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   const showLabels = sidebarOpen || mobileOpen;
 
   const saveProfile = async () => {
@@ -269,73 +209,51 @@ export function PortalLayout({ theme, user, navItems, activeSection, onSectionCh
   };
 
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{
-        background: `radial-gradient(ellipse at 20% 50%, ${theme.hex}18 0%, transparent 60%),
-                     radial-gradient(ellipse at 80% 20%, ${theme.hex}10 0%, transparent 50%),
-                     linear-gradient(135deg, #f0f4ff 0%, #e8ecf8 50%, #f5f0ff 100%)`,
-      }}
-    >
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+
       {/* Mobile overlay */}
       {mobileOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 lg:hidden"
-          onClick={() => setMobileOpen(false)} aria-hidden="true" />
+        <div className="fixed inset-0 bg-black/50 z-50 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* Sidebar — Glassmorphism */}
+      {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
       <aside
-        className={`fixed lg:relative z-[60] lg:z-auto flex flex-col h-full transition-all duration-300 ease-in-out
-          ${sidebarOpen ? 'lg:w-64' : 'lg:w-16'} w-64
+        className={`fixed lg:relative z-[60] lg:z-auto flex flex-col h-full transition-all duration-300
+          ${sidebarOpen ? 'lg:w-60' : 'lg:w-16'} w-60
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
-        style={{
-          background: `linear-gradient(160deg, ${theme.hex}f0 0%, ${theme.hex}cc 100%)`,
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          borderRight: '1px solid rgba(255,255,255,0.15)',
-          boxShadow: '4px 0 24px rgba(0,0,0,0.15)',
-        }}
-        aria-label="Sidebar navigation"
-        id="portal-sidebar"
+        style={{ backgroundColor: theme.sidebarHex || '#0f2557', borderRight: '1px solid rgba(255,255,255,0.08)' }}
       >
-        {/* Logo area */}
-        <div className="flex items-center gap-3 px-4 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
-          <TSTEmblem size={showLabels ? 36 : 28} className="flex-shrink-0" />
+        {/* Brand */}
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10">
+          <TSTEmblem size={showLabels ? 32 : 26} className="flex-shrink-0" />
           {showLabels && (
             <div className="overflow-hidden">
-              <p className="text-white font-bold text-sm truncate" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>TechSwiftTrix</p>
-              <p className="text-white/60 text-xs truncate">{theme.name}</p>
+              <p className="text-white font-bold text-sm leading-tight truncate">TechSwiftTrix</p>
+              <p className="text-white/50 text-xs truncate">{theme.name}</p>
             </div>
           )}
         </div>
 
-        {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2">
-          {navItems.map((item) => {
-            const isActive = item.id === activeSection;
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+          {navItems.map(item => {
+            const active = item.id === activeSection;
             return (
-              <button
-                key={item.id}
-                onClick={() => { onSectionChange(item.id); setMobileOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 text-sm font-medium`}
-                style={isActive ? {
-                  background: 'rgba(255,255,255,0.22)',
-                  backdropFilter: 'blur(8px)',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 8px rgba(0,0,0,0.1)',
-                  color: 'white',
-                } : {
-                  color: 'rgba(255,255,255,0.7)',
-                }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+              <button key={item.id} onClick={() => { onSectionChange(item.id); setMobileOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
+                style={active
+                  ? { backgroundColor: theme.accentHex || '#f59e0b', color: '#fff' }
+                  : { color: 'rgba(255,255,255,0.65)' }
+                }
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = '#fff'; }}
+                onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.65)'; } }}
                 title={!showLabels ? item.label : undefined}
-                aria-current={isActive ? 'page' : undefined}
+                aria-current={active ? 'page' : undefined}
               >
                 <span className="flex-shrink-0 w-5 h-5">{item.icon}</span>
                 {showLabels && <span className="flex-1 text-left truncate">{item.label}</span>}
                 {showLabels && item.badge !== undefined && item.badge > 0 && (
-                  <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center"
-                    style={{ background: 'rgba(255,255,255,0.25)', color: 'white' }}>
+                  <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center bg-red-500 text-white">
                     {item.badge}
                   </span>
                 )}
@@ -345,26 +263,21 @@ export function PortalLayout({ theme, user, navItems, activeSection, onSectionCh
         </nav>
 
         {/* User footer */}
-        <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.12)' }}>
-          <div className={`flex items-center gap-3 ${showLabels ? '' : 'justify-center'}`}>
-            <button
-              onClick={() => setProfileOpen(true)}
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold hover:opacity-80 transition-opacity"
-              style={{ background: 'rgba(255,255,255,0.25)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.4)' }}
-              title="View profile"
-            >
+        <div className="p-3 border-t border-white/10">
+          <div className={`flex items-center gap-2.5 ${showLabels ? '' : 'justify-center'}`}>
+            <button onClick={() => setProfileOpen(true)}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: theme.accentHex || '#f59e0b' }}>
               {initials}
             </button>
             {showLabels && (
-              <div className="flex-1 overflow-hidden cursor-pointer" onClick={() => setProfileOpen(true)}>
-                <p className="text-white text-xs font-medium truncate">{user.name}</p>
-                <p className="text-white/50 text-xs truncate">{user.role}</p>
+              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setProfileOpen(true)}>
+                <p className="text-white text-xs font-semibold truncate">{user.name}</p>
+                <p className="text-white/40 text-[10px] truncate">{user.role}</p>
               </div>
             )}
             {showLabels && onLogout && (
-              <button onClick={onLogout}
-                className="text-white/50 hover:text-white transition-colors p-1 rounded"
-                title="Sign out" aria-label="Sign out">
+              <button onClick={onLogout} className="text-white/40 hover:text-red-400 transition-colors p-1 rounded" title="Sign out">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
@@ -373,217 +286,227 @@ export function PortalLayout({ theme, user, navItems, activeSection, onSectionCh
           </div>
         </div>
 
-        {/* Desktop collapse toggle */}
-        <button
-          onClick={() => setSidebarOpen(o => !o)}
-          className="hidden lg:flex absolute -right-3 top-20 w-6 h-6 rounded-full items-center justify-center text-gray-500 hover:text-gray-700 transition-colors"
-          style={{
-            background: 'linear-gradient(145deg, #f0f4ff, #e8ecf8)',
-            boxShadow: '3px 3px 6px #c8cde0, -3px -3px 6px #ffffff',
-            border: '1px solid rgba(255,255,255,0.8)',
-          }}
-          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-        >
+        {/* Collapse toggle */}
+        <button onClick={() => setSidebarOpen(o => !o)}
+          className="hidden lg:flex absolute -right-3 top-20 w-6 h-6 rounded-full items-center justify-center bg-white border border-slate-200 text-slate-500 hover:text-slate-700 shadow-sm transition-colors"
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
           <svg className={`w-3 h-3 transition-transform ${sidebarOpen ? '' : 'rotate-180'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
       </aside>
 
-      {/* Main content */}
+      {/* ── Main ────────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Top header — Glassmorphism */}
-        <header
-          className="h-16 flex items-center px-4 gap-4 flex-shrink-0"
-          style={{
-            background: 'rgba(255,255,255,0.7)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            borderBottom: '1px solid rgba(255,255,255,0.6)',
-            boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
-          }}
-        >
-          {/* Hamburger — mobile only */}
-          <button
-            onClick={() => setMobileOpen(o => !o)}
-            className="lg:hidden p-2 rounded-xl text-gray-500 transition-all"
-            style={{
-              background: 'linear-gradient(145deg, #f0f4ff, #e8ecf8)',
-              boxShadow: '3px 3px 6px #c8cde0, -3px -3px 6px #ffffff',
-            }}
-            aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
-            aria-expanded={mobileOpen}
-            aria-controls="portal-sidebar"
-          >
-            {mobileOpen ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : (
+        {/* Top bar */}
+        <header className="h-14 flex items-center justify-between px-4 bg-white border-b border-slate-200 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            {/* Mobile hamburger */}
+            <button onClick={() => setMobileOpen(o => !o)} className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
+            </button>
+            {/* Portal badge */}
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-white"
+              style={{ backgroundColor: theme.hex }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-white/70" />
+              {theme.name}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Date */}
+            <span className="hidden sm:block text-xs text-slate-400 font-medium">
+              {new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+            {/* Help / FAQ button */}
+            {faqs && (
+              <button
+                onClick={() => { setFaqOpen(o => !o); setNotifOpen(false); }}
+                className={`p-2 rounded-lg transition-colors ${faqOpen ? 'text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                style={faqOpen ? { backgroundColor: theme.hex } : {}}
+                aria-label="Help & FAQ"
+                title="Help & FAQ"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
             )}
-          </button>
+            {/* Notifications bell */}
+            {(() => {
+              const unread = notifications.filter((n: any) => !n.read).length;
+              return (
+                <div className="relative">
+                  <button
+                    onClick={() => { setNotifOpen(o => !o); setFaqOpen(false); }}
+                    className={`relative p-2 rounded-lg transition-colors ${notifOpen ? 'text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                    style={notifOpen ? { backgroundColor: theme.hex } : {}}
+                    aria-label="Notifications"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    {unread > 0 && (
+                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    )}
+                  </button>
 
-          {/* Portal name pill — glass */}
-          <span
-            className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white"
-            style={{
-              background: `linear-gradient(135deg, ${theme.hex}dd, ${theme.hex})`,
-              boxShadow: `0 2px 8px ${theme.hex}44`,
-            }}
-          >
-            {theme.name}
-          </span>
+                  {notifOpen && (
+                    <>
+                      <div className="fixed inset-0 z-[55]" onClick={() => setNotifOpen(false)} />
+                      <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl border border-slate-200 shadow-xl z-[60] overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                          <p className="text-sm font-bold text-slate-800">Notifications</p>
+                          {unread > 0 && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-600">{unread} unread</span>
+                          )}
+                        </div>
+                        <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
+                          {notifications.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-10 text-center">
+                              <svg className="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                              </svg>
+                              <p className="text-sm text-slate-400">No notifications</p>
+                            </div>
+                          ) : notifications.map((n: any, i: number) => (
+                            <div key={n.id || i} className={`flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-blue-50/40' : ''}`}>
+                              <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.read ? 'bg-slate-300' : 'bg-blue-500'}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-slate-800 leading-snug">{n.title || 'Notification'}</p>
+                                {n.message && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>}
+                                {n.createdAt && <p className="text-[10px] text-slate-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>}
+                              </div>
+                              {!n.read && onNotificationRead && (
+                                <button
+                                  onClick={() => onNotificationRead(n.id)}
+                                  className="text-[10px] font-semibold flex-shrink-0 mt-0.5 hover:underline"
+                                  style={{ color: theme.hex }}>
+                                  Mark read
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
-          <div className="flex-1" />
-
-          {/* Notifications bell — neumorphic */}
-          <button
-            className="relative p-2 rounded-xl text-gray-500 transition-all"
-            style={{
-              background: 'linear-gradient(145deg, #f0f4ff, #e8ecf8)',
-              boxShadow: '3px 3px 6px #c8cde0, -3px -3px 6px #ffffff',
-            }}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-          </button>
-
-          {/* User avatar — clickable to open profile */}
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setProfileOpen(true)}>
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold hover:opacity-80 transition-opacity"
-              style={{
-                background: `linear-gradient(135deg, ${theme.hex}dd, ${theme.hex})`,
-                boxShadow: `0 3px 10px ${theme.hex}44, inset 0 1px 0 rgba(255,255,255,0.3)`,
-              }}
-            >
-              {initials}
-            </div>
-            <div className="hidden sm:block">
-              <p className="text-sm font-semibold text-gray-800">{user.name}</p>
-              <p className="text-xs text-gray-400">{user.role}</p>
-            </div>
+            {/* User */}
+            <button onClick={() => setProfileOpen(true)} className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                style={{ backgroundColor: theme.hex }}>
+                {initials}
+              </div>
+              <div className="hidden sm:block text-left">
+                <p className="text-xs font-semibold text-slate-800 leading-tight">{user.name}</p>
+                <p className="text-[10px] text-slate-400 leading-tight">{user.role}</p>
+              </div>
+            </button>
           </div>
         </header>
 
-        {/* Profile slide-over panel */}
-        {profileOpen && (
-          <div className="fixed inset-0 z-[70] flex justify-end">
-            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setProfileOpen(false)} />
-            <div
-              className="relative w-full max-w-sm h-full flex flex-col overflow-y-auto"
-              style={{
-                background: 'rgba(255,255,255,0.92)',
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)',
-                boxShadow: '-8px 0 32px rgba(0,0,0,0.12)',
-              }}
-            >
-              {/* Panel header */}
-              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-                <h2 className="text-lg font-bold text-gray-900">My Profile</h2>
-                <button onClick={() => setProfileOpen(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        {/* Page content + chat side panel */}
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          <main className="flex-1 overflow-y-auto p-5">
+            {children}
+          </main>
+        </div>
+      </div>
+
+      {/* ── FAQ slide-in panel ──────────────────────────────────────────────── */}
+      {faqOpen && faqs && (
+        <div className="fixed inset-0 z-[70] flex justify-end">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setFaqOpen(false)} />
+          <div className="relative w-full sm:max-w-lg h-full flex flex-col bg-white shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0"
+              style={{ borderTop: `3px solid ${theme.hex}` }}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white flex-shrink-0"
+                  style={{ backgroundColor: theme.hex }}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                </button>
-              </div>
-
-              {/* Avatar */}
-              <div className="flex flex-col items-center py-8 px-6 border-b border-gray-100">
-                <div
-                  className="w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-3"
-                  style={{
-                    background: `linear-gradient(135deg, ${theme.hex}dd, ${theme.hex})`,
-                    boxShadow: `0 8px 24px ${theme.hex}44`,
-                  }}
-                >
-                  {initials}
-                </div>
-                <p className="text-lg font-bold text-gray-900">{user.name}</p>
-                <span
-                  className="mt-1 text-xs font-semibold px-3 py-1 rounded-full text-white"
-                  style={{ background: theme.hex }}
-                >
-                  {user.role}
-                </span>
-              </div>
-
-              {/* Profile fields */}
-              <div className="flex-1 px-6 py-6 flex flex-col gap-4">
-                {profileMsg && (
-                  <div className={`p-3 rounded-xl text-sm ${profileMsg.includes('Failed') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                    {profileMsg}
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Full Name</label>
-                  <input
-                    type="text"
-                    value={profileForm.name}
-                    onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl text-sm transition-all"
-                    style={{ background: 'linear-gradient(145deg, #e8ecf8, #f0f4ff)', boxShadow: 'inset 3px 3px 6px #c8cde0, inset -3px -3px 6px #ffffff', border: 'none' }}
-                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Email</label>
-                  <input
-                    type="email"
-                    value={profileForm.email}
-                    readOnly
-                    className="w-full px-4 py-2.5 rounded-xl text-sm text-gray-500 cursor-not-allowed"
-                    style={{ background: 'linear-gradient(145deg, #e8ecf8, #f0f4ff)', boxShadow: 'inset 3px 3px 6px #c8cde0, inset -3px -3px 6px #ffffff', border: 'none' }}
-                  />
+                  <h2 className="text-sm font-bold text-slate-900">Help & FAQ</h2>
+                  <p className="text-[10px] text-slate-400">{portalName || theme.name}</p>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Role</label>
-                  <div
-                    className="w-full px-4 py-2.5 rounded-xl text-sm text-gray-600"
-                    style={{ background: 'linear-gradient(145deg, #e8ecf8, #f0f4ff)', boxShadow: 'inset 3px 3px 6px #c8cde0, inset -3px -3px 6px #ffffff' }}
-                  >
-                    {user.role}
-                  </div>
-                </div>
-
-                <button
-                  onClick={saveProfile}
-                  disabled={profileSaving}
-                  className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 mt-2"
-                  style={{ background: `linear-gradient(135deg, ${theme.hex}dd, ${theme.hex})`, boxShadow: `0 4px 15px ${theme.hex}44` }}
-                >
-                  {profileSaving ? 'Saving…' : 'Save Changes'}
-                </button>
               </div>
-
-              {/* Sign out */}
-              {onLogout && (
-                <div className="px-6 pb-6">
-                  <button
-                    onClick={() => { setProfileOpen(false); onLogout(); }}
-                    className="w-full py-3 rounded-xl text-red-600 font-semibold text-sm border border-red-100 hover:bg-red-50 transition-all flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Sign Out
-                  </button>
-                </div>
-              )}
+              <button onClick={() => setFaqOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition-colors"
+                aria-label="Close FAQ">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <FAQPanel faqs={faqs} accentColor={theme.hex} portalName={portalName || theme.name} />
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
-      </div>
+      {/* ── Profile panel ───────────────────────────────────────────────────── */}
+      {profileOpen && (
+        <div className="fixed inset-0 z-[70] flex justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setProfileOpen(false)} />
+          <div className="relative w-full max-w-xs h-full flex flex-col bg-white shadow-2xl overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h2 className="text-base font-bold text-slate-900">My Profile</h2>
+              <button onClick={() => setProfileOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex flex-col items-center py-6 px-5 border-b border-slate-100">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold mb-2"
+                style={{ backgroundColor: theme.hex }}>
+                {initials}
+              </div>
+              <p className="font-bold text-slate-900">{user.name}</p>
+              <span className="mt-1 text-xs font-semibold px-2.5 py-0.5 rounded-full text-white" style={{ backgroundColor: theme.hex }}>{user.role}</span>
+            </div>
+            <div className="flex-1 px-5 py-5 space-y-4">
+              {profileMsg && <div className={`p-3 rounded-lg text-sm ${profileMsg.includes('Failed') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{profileMsg}</div>}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                <input type="text" value={profileForm.name} onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                  style={{ '--tw-ring-color': theme.hex } as any} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Email</label>
+                <input type="email" value={user.email} readOnly className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm bg-slate-100 text-slate-500 cursor-not-allowed" />
+              </div>
+              <button onClick={saveProfile} disabled={profileSaving}
+                className="w-full py-2.5 rounded-lg text-white text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+                style={{ backgroundColor: theme.hex }}>
+                {profileSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+            {onLogout && (
+              <div className="px-5 pb-5">
+                <button onClick={() => { setProfileOpen(false); onLogout(); }}
+                  className="w-full py-2.5 rounded-lg text-red-600 text-sm font-semibold border border-red-200 hover:bg-red-50 transition-all flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                  Sign Out
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

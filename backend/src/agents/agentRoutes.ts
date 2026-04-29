@@ -238,29 +238,81 @@ router.post('/:agentId/reassign', requireRole(Role.HEAD_OF_TRAINERS), async (req
 router.post('/clients/:clientId/assign-account-exec', requireRole(Role.HEAD_OF_TRAINERS), async (req: Request, res: Response) => {
   try {
     const { clientId } = req.params;
-    const { accountExecId } = req.body;
-    if (!accountExecId) return res.status(400).json({ success: false, error: 'accountExecId is required' });
+    // Accept both field names for compatibility
+    const trainerId: string | undefined = req.body.trainerId || req.body.accountExecId || req.body.accountExecutiveId;
+    if (!trainerId) return res.status(400).json({ success: false, error: 'trainerId is required' });
 
     const { db } = await import('../database/connection');
 
-    // Verify client is CLOSED_WON (deposit paid)
-    const clientResult = await db.query(`SELECT status FROM clients WHERE id = $1`, [clientId]);
+    // Verify client exists and is in an assignable status
+    const clientResult = await db.query(`SELECT id, status, name FROM clients WHERE id = $1`, [clientId]);
     if (!clientResult.rows.length) return res.status(404).json({ success: false, error: 'Client not found' });
-    if (clientResult.rows[0].status !== 'CLOSED_WON') {
-      return res.status(400).json({ success: false, error: 'Client must be CLOSED_WON before assigning to Account Executive' });
+
+    const assignableStatuses = ['CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED', 'CLOSED_WON'];
+    if (!assignableStatuses.includes(clientResult.rows[0].status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Client must be CONVERTED, LEAD_ACTIVATED, or LEAD_QUALIFIED to assign a trainer (current: ${clientResult.rows[0].status})`,
+      });
     }
 
-    // Assign to account exec via project
+    // Verify trainer exists and has the right role
+    const trainerResult = await db.query(
+      `SELECT u.id, u.full_name, r.name AS role
+       FROM users u JOIN roles r ON r.id = u.role_id
+       WHERE u.id = $1`,
+      [trainerId]
+    );
+    if (!trainerResult.rows.length) return res.status(404).json({ success: false, error: 'Trainer not found' });
+    if (!['TRAINER', 'HEAD_OF_TRAINERS'].includes(trainerResult.rows[0].role)) {
+      return res.status(400).json({ success: false, error: 'Assigned user must be a TRAINER or HEAD_OF_TRAINERS' });
+    }
+
+    // Assign trainer to client
     await db.query(
-      `UPDATE projects SET assigned_to = $1, updated_at = NOW()
-       WHERE client_id = $2`,
-      [accountExecId, clientId]
+      `UPDATE clients SET trainer_id = $1, status = 'NEGOTIATION', updated_at = NOW() WHERE id = $2`,
+      [trainerId, clientId]
     );
 
-    logger.info('Converted client assigned to Account Executive', { clientId, accountExecId });
-    return res.json({ success: true, message: 'Client assigned to Account Executive' });
+    // Also update project if one exists
+    await db.query(
+      `UPDATE projects SET assigned_to = $1, updated_at = NOW() WHERE client_id = $2`,
+      [trainerId, clientId]
+    ).catch(() => { /* no project yet — non-fatal */ });
+
+    logger.info('Client assigned to trainer by HoT', {
+      clientId,
+      trainerId,
+      trainerName: trainerResult.rows[0].full_name,
+      clientName: clientResult.rows[0].name,
+    });
+    return res.json({
+      success: true,
+      message: `Client "${clientResult.rows[0].name}" assigned to trainer "${trainerResult.rows[0].full_name}"`,
+    });
   } catch (error: any) {
-    logger.error('Assign account exec error', { error });
+    logger.error('Assign trainer error', { error });
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// ── Trainer: Modify agent priority listing (doc §17) ─────────────────────────
+router.post('/:agentId/priority-listing', requireRole(Role.TRAINER, Role.HEAD_OF_TRAINERS), async (req: Request, res: Response) => {
+  try {
+    const { agentId } = req.params;
+    const { tier } = req.body;
+    if (!['Top', 'Medium', 'Basic'].includes(tier)) {
+      return res.status(400).json({ success: false, error: 'tier must be Top, Medium, or Basic' });
+    }
+    const { db } = await import('../database/connection');
+    await db.query(
+      `UPDATE users SET priority_listing_tier = $1, updated_at = NOW() WHERE id = $2`,
+      [tier, agentId]
+    );
+    logger.info('Agent priority listing updated', { agentId, tier });
+    return res.json({ success: true, message: 'Priority listing updated' });
+  } catch (error: any) {
+    logger.error('Priority listing update error', { error });
     return res.status(400).json({ success: false, error: error.message });
   }
 });

@@ -212,69 +212,96 @@ export class ProjectService {
    * Requirement 6.7: Link project to original client and agent records
    */
   async listProjects(filters: ProjectFilters = {}): Promise<{ projects: Project[]; total: number }> {
-    try {
-      const conditions: string[] = [];
-      const values: any[] = [];
-      let paramIndex = 1;
+      try {
+        const conditions: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
 
-      if (filters.clientId) {
-        conditions.push(`p.client_id = $${paramIndex++}`);
-        values.push(filters.clientId);
+        if (filters.clientId) {
+          conditions.push(`p.client_id = $${paramIndex++}`);
+          values.push(filters.clientId);
+        }
+
+        if (filters.agentId) {
+          conditions.push(`c.agent_id = $${paramIndex++}`);
+          values.push(filters.agentId);
+        }
+
+        if (filters.status) {
+          conditions.push(`p.status = $${paramIndex++}`);
+          values.push(filters.status);
+        }
+
+        if (filters.currency) {
+          conditions.push(`p.currency = $${paramIndex++}`);
+          values.push(filters.currency);
+        }
+
+        if (filters.search) {
+          conditions.push(`p.reference_number ILIKE $${paramIndex++}`);
+          values.push(`%${filters.search}%`);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const countResult = await db.query(
+          `SELECT COUNT(*) FROM projects p LEFT JOIN clients c ON c.id = p.client_id ${whereClause}`,
+          values
+        );
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        const limit = filters.limit || 50;
+        const offset = filters.offset || 0;
+        const limitIdx = paramIndex++;
+        const offsetIdx = paramIndex;
+
+        const dataValues = [...values, limit, offset];
+        const result = await db.query(
+          `SELECT p.id, p.reference_number, p.client_id, c.agent_id,
+                  p.status, p.service_amount, p.currency,
+                  p.start_date, p.end_date, p.github_repo_id,
+                  p.created_at, p.updated_at,
+                  COALESCE(c.name, ct.content->>'clientName') AS client_name
+           FROM projects p
+           LEFT JOIN clients c ON c.id = p.client_id
+           LEFT JOIN LATERAL (
+             SELECT content FROM contracts
+             WHERE project_id = p.id
+             ORDER BY version DESC LIMIT 1
+           ) ct ON true
+           ${whereClause}
+           ORDER BY p.created_at DESC
+           LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+          dataValues
+        );
+
+        // Enrich with team info if the column exists (added by migration 025)
+        const projectRows = result.rows;
+        const teamMap = new Map<string, { teamId: string; teamName: string }>();
+        try {
+          const teamResult = await db.query(
+            `SELECT p.id AS project_id, p.team_id, dt.name AS team_name
+             FROM projects p
+             LEFT JOIN developer_teams dt ON dt.id = p.team_id
+             WHERE p.team_id IS NOT NULL`
+          );
+          for (const row of teamResult.rows) {
+            teamMap.set(row.project_id, { teamId: row.team_id, teamName: row.team_name });
+          }
+        } catch { /* team_id column may not exist yet — safe to ignore */ }
+
+        const projects = projectRows.map((row) => ({
+          ...this.mapProjectFromDb(row),
+          clientName: row.client_name ?? undefined,
+          ...(teamMap.get(row.id) || {}),
+        }));
+
+        return { projects, total };
+      } catch (error) {
+        logger.error('Failed to list projects', { error, filters });
+        throw error;
       }
-
-      if (filters.agentId) {
-        conditions.push(`c.agent_id = $${paramIndex++}`);
-        values.push(filters.agentId);
-      }
-
-      if (filters.status) {
-        conditions.push(`p.status = $${paramIndex++}`);
-        values.push(filters.status);
-      }
-
-      if (filters.currency) {
-        conditions.push(`p.currency = $${paramIndex++}`);
-        values.push(filters.currency);
-      }
-
-      if (filters.search) {
-        conditions.push(`p.reference_number ILIKE $${paramIndex++}`);
-        values.push(`%${filters.search}%`);
-      }
-
-      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-      const countResult = await db.query(
-        `SELECT COUNT(*) FROM projects p JOIN clients c ON c.id = p.client_id ${whereClause}`,
-        values
-      );
-      const total = parseInt(countResult.rows[0].count, 10);
-
-      const limit = filters.limit || 50;
-      const offset = filters.offset || 0;
-
-      const dataValues = [...values, limit, offset];
-      const result = await db.query(
-        `SELECT p.id, p.reference_number, p.client_id, c.agent_id,
-                p.status, p.service_amount, p.currency,
-                p.start_date, p.end_date, p.github_repo_id,
-                p.created_at, p.updated_at
-         FROM projects p
-         JOIN clients c ON c.id = p.client_id
-         ${whereClause}
-         ORDER BY p.created_at DESC
-         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-        dataValues
-      );
-
-      const projects = result.rows.map((row) => this.mapProjectFromDb(row));
-
-      return { projects, total };
-    } catch (error) {
-      logger.error('Failed to list projects', { error, filters });
-      throw error;
     }
-  }
 
   /**
    * Update project status with workflow validation

@@ -1,14 +1,14 @@
 /**
- * Portal-specific color themes — all derived from the TechSwiftTrix brand palette.
+ * TechSwiftTrix ERP — Portal Themes
+ * Modern government-portal style: clean, flat, accessible.
+ * Inspired by IEBC, HELB, eCitizen Kenya design language.
  *
- * Brand colors from the TST logo:
- *   Electric Blue  #1e90ff  (primary TST letter color)
- *   Cyan/Teal      #00d4ff  (mid-gradient)
- *   Lime Green     #84cc16  (right side of gradient)
- *   Gold           #eab308  (lens flare accent)
- *   Navy            #0a1628  (background)
- *
- * Each portal uses a distinct hue pulled from or inspired by the logo gradient.
+ * Design principles:
+ *  - Strong primary colors with clear hierarchy
+ *  - White content areas, light gray backgrounds
+ *  - Deep sidebar with white text
+ *  - No glassmorphism — clean flat cards with subtle borders
+ *  - Accessible contrast ratios (WCAG AA)
  */
 
 export interface PortalTheme {
@@ -30,32 +30,42 @@ export interface PortalTheme {
   badgeText: string;
   hex: string;
   hexLight: string;
+  // Extended tokens for modern design
+  sidebarHex: string;      // sidebar background hex
+  accentHex: string;       // accent/highlight hex
+  borderHex: string;       // card border hex
+  bgHex: string;           // page background hex
 }
 
 export const PORTAL_THEMES: Record<string, PortalTheme> = {
-  // CEO — Electric Blue (core TST letter color)
+
+  // ── CEO — Deep Government Blue (like IEBC primary) ──────────────────────────
   ceo: {
     id: 'ceo',
     name: 'CEO Portal',
-    primary: 'bg-blue-600',
-    primaryHover: 'hover:bg-blue-700',
+    primary: 'bg-blue-700',
+    primaryHover: 'hover:bg-blue-800',
     primaryLight: 'bg-blue-50',
     primaryText: 'text-white',
     primaryTextLight: 'text-blue-700',
-    accent: 'bg-yellow-400',
-    gradient: 'from-blue-700 to-blue-900',
+    accent: 'bg-amber-500',
+    gradient: 'from-blue-800 to-blue-950',
     sidebarBg: 'bg-blue-950',
     sidebarText: 'text-blue-100',
     sidebarActive: 'text-white',
-    sidebarActiveBg: 'bg-blue-600',
-    headerBg: 'bg-blue-900',
-    badgeBg: 'bg-yellow-400',
-    badgeText: 'text-blue-900',
-    hex: '#1e90ff',
+    sidebarActiveBg: 'bg-blue-700',
+    headerBg: 'bg-white',
+    badgeBg: 'bg-amber-500',
+    badgeText: 'text-white',
+    hex: '#1d4ed8',
     hexLight: '#eff6ff',
+    sidebarHex: '#0f2557',
+    accentHex: '#f59e0b',
+    borderHex: '#e2e8f0',
+    bgHex: '#f8fafc',
   },
 
-  // Executive (CFO/CoS/EA) — Deep Navy (logo background)
+  // ── Executive (CFO/CoS/EA) — Charcoal/Slate (eCitizen header style) ─────────
   executive: {
     id: 'executive',
     name: 'Executive Portal',
@@ -64,126 +74,150 @@ export const PORTAL_THEMES: Record<string, PortalTheme> = {
     primaryLight: 'bg-slate-50',
     primaryText: 'text-white',
     primaryTextLight: 'text-slate-800',
-    accent: 'bg-cyan-400',
+    accent: 'bg-teal-500',
     gradient: 'from-slate-800 to-slate-950',
-    sidebarBg: 'bg-slate-950',
+    sidebarBg: 'bg-slate-900',
     sidebarText: 'text-slate-200',
     sidebarActive: 'text-white',
-    sidebarActiveBg: 'bg-slate-700',
-    headerBg: 'bg-slate-900',
-    badgeBg: 'bg-cyan-400',
-    badgeText: 'text-slate-900',
-    hex: '#0a1628',
-    hexLight: '#f8fafc',
+    sidebarActiveBg: 'bg-teal-600',
+    headerBg: 'bg-white',
+    badgeBg: 'bg-teal-500',
+    badgeText: 'text-white',
+    hex: '#0f766e',
+    hexLight: '#f0fdfa',
+    sidebarHex: '#1e293b',
+    accentHex: '#0f766e',
+    borderHex: '#e2e8f0',
+    bgHex: '#f8fafc',
   },
 
-  // C-Level (COO/CTO) — Cyan/Teal (mid-gradient of TST letters)
+  // ── C-Level (COO/CTO) — Forest Green (HELB green palette) ───────────────────
   clevel: {
     id: 'clevel',
     name: 'C-Level Portal',
-    primary: 'bg-cyan-600',
-    primaryHover: 'hover:bg-cyan-700',
-    primaryLight: 'bg-cyan-50',
+    primary: 'bg-green-700',
+    primaryHover: 'hover:bg-green-800',
+    primaryLight: 'bg-green-50',
     primaryText: 'text-white',
-    primaryTextLight: 'text-cyan-700',
-    accent: 'bg-lime-400',
-    gradient: 'from-cyan-600 to-cyan-900',
-    sidebarBg: 'bg-cyan-950',
-    sidebarText: 'text-cyan-100',
+    primaryTextLight: 'text-green-700',
+    accent: 'bg-amber-500',
+    gradient: 'from-green-800 to-green-950',
+    sidebarBg: 'bg-green-950',
+    sidebarText: 'text-green-100',
     sidebarActive: 'text-white',
-    sidebarActiveBg: 'bg-cyan-600',
-    headerBg: 'bg-cyan-900',
-    badgeBg: 'bg-lime-400',
-    badgeText: 'text-cyan-900',
-    hex: '#0891b2',
-    hexLight: '#ecfeff',
+    sidebarActiveBg: 'bg-green-700',
+    headerBg: 'bg-white',
+    badgeBg: 'bg-amber-500',
+    badgeText: 'text-white',
+    hex: '#15803d',
+    hexLight: '#f0fdf4',
+    sidebarHex: '#052e16',
+    accentHex: '#f59e0b',
+    borderHex: '#e2e8f0',
+    bgHex: '#f8fafc',
   },
 
-  // Operations — Lime Green (right side of TST gradient)
+  // ── Operations — Deep Teal (eCitizen Kenya teal) ─────────────────────────────
   operations: {
     id: 'operations',
     name: 'Operations Portal',
-    primary: 'bg-lime-600',
-    primaryHover: 'hover:bg-lime-700',
-    primaryLight: 'bg-lime-50',
+    primary: 'bg-teal-700',
+    primaryHover: 'hover:bg-teal-800',
+    primaryLight: 'bg-teal-50',
     primaryText: 'text-white',
-    primaryTextLight: 'text-lime-700',
-    accent: 'bg-yellow-400',
-    gradient: 'from-lime-600 to-green-800',
-    sidebarBg: 'bg-green-950',
-    sidebarText: 'text-lime-100',
+    primaryTextLight: 'text-teal-700',
+    accent: 'bg-orange-500',
+    gradient: 'from-teal-800 to-teal-950',
+    sidebarBg: 'bg-teal-950',
+    sidebarText: 'text-teal-100',
     sidebarActive: 'text-white',
-    sidebarActiveBg: 'bg-lime-600',
-    headerBg: 'bg-green-900',
-    badgeBg: 'bg-yellow-400',
-    badgeText: 'text-green-900',
-    hex: '#65a30d',
-    hexLight: '#f7fee7',
+    sidebarActiveBg: 'bg-teal-700',
+    headerBg: 'bg-white',
+    badgeBg: 'bg-orange-500',
+    badgeText: 'text-white',
+    hex: '#0f766e',
+    hexLight: '#f0fdfa',
+    sidebarHex: '#042f2e',
+    accentHex: '#f97316',
+    borderHex: '#e2e8f0',
+    bgHex: '#f8fafc',
   },
 
-  // Technology — Bright Cyan (orbital ring color)
+  // ── Technology — Indigo/Purple (modern tech portal) ──────────────────────────
   technology: {
     id: 'technology',
     name: 'Technology Portal',
-    primary: 'bg-sky-500',
-    primaryHover: 'hover:bg-sky-600',
-    primaryLight: 'bg-sky-50',
+    primary: 'bg-indigo-700',
+    primaryHover: 'hover:bg-indigo-800',
+    primaryLight: 'bg-indigo-50',
     primaryText: 'text-white',
-    primaryTextLight: 'text-sky-700',
-    accent: 'bg-lime-400',
-    gradient: 'from-sky-500 to-blue-800',
-    sidebarBg: 'bg-sky-950',
-    sidebarText: 'text-sky-100',
+    primaryTextLight: 'text-indigo-700',
+    accent: 'bg-cyan-500',
+    gradient: 'from-indigo-800 to-indigo-950',
+    sidebarBg: 'bg-indigo-950',
+    sidebarText: 'text-indigo-100',
     sidebarActive: 'text-white',
-    sidebarActiveBg: 'bg-sky-500',
-    headerBg: 'bg-sky-900',
-    badgeBg: 'bg-lime-400',
-    badgeText: 'text-sky-900',
-    hex: '#00d4ff',
-    hexLight: '#f0f9ff',
+    sidebarActiveBg: 'bg-indigo-700',
+    headerBg: 'bg-white',
+    badgeBg: 'bg-cyan-500',
+    badgeText: 'text-white',
+    hex: '#4338ca',
+    hexLight: '#eef2ff',
+    sidebarHex: '#1e1b4b',
+    accentHex: '#06b6d4',
+    borderHex: '#e2e8f0',
+    bgHex: '#f8fafc',
   },
 
-  // Agents — Gold/Amber (lens flare accent in logo)
+  // ── Agents — Warm Orange/Red (action-oriented, field agents) ─────────────────
   agents: {
     id: 'agents',
     name: 'Agents Portal',
-    primary: 'bg-amber-500',
-    primaryHover: 'hover:bg-amber-600',
-    primaryLight: 'bg-amber-50',
+    primary: 'bg-orange-600',
+    primaryHover: 'hover:bg-orange-700',
+    primaryLight: 'bg-orange-50',
     primaryText: 'text-white',
-    primaryTextLight: 'text-amber-700',
-    accent: 'bg-lime-400',
-    gradient: 'from-amber-500 to-orange-700',
-    sidebarBg: 'bg-amber-950',
-    sidebarText: 'text-amber-100',
+    primaryTextLight: 'text-orange-700',
+    accent: 'bg-blue-600',
+    gradient: 'from-orange-700 to-red-900',
+    sidebarBg: 'bg-orange-950',
+    sidebarText: 'text-orange-100',
     sidebarActive: 'text-white',
-    sidebarActiveBg: 'bg-amber-500',
-    headerBg: 'bg-amber-900',
-    badgeBg: 'bg-lime-400',
-    badgeText: 'text-amber-900',
-    hex: '#eab308',
-    hexLight: '#fefce8',
+    sidebarActiveBg: 'bg-orange-600',
+    headerBg: 'bg-white',
+    badgeBg: 'bg-blue-600',
+    badgeText: 'text-white',
+    hex: '#ea580c',
+    hexLight: '#fff7ed',
+    sidebarHex: '#431407',
+    accentHex: '#2563eb',
+    borderHex: '#e2e8f0',
+    bgHex: '#f8fafc',
   },
 
-  // Trainers — Emerald (complementary to the lime in the logo)
+  // ── Trainers — Deep Purple (training/education) ───────────────────────────────
   trainers: {
     id: 'trainers',
     name: 'Trainers Portal',
-    primary: 'bg-emerald-600',
-    primaryHover: 'hover:bg-emerald-700',
-    primaryLight: 'bg-emerald-50',
+    primary: 'bg-purple-700',
+    primaryHover: 'hover:bg-purple-800',
+    primaryLight: 'bg-purple-50',
     primaryText: 'text-white',
-    primaryTextLight: 'text-emerald-700',
-    accent: 'bg-cyan-400',
-    gradient: 'from-emerald-600 to-teal-800',
-    sidebarBg: 'bg-emerald-950',
-    sidebarText: 'text-emerald-100',
+    primaryTextLight: 'text-purple-700',
+    accent: 'bg-green-500',
+    gradient: 'from-purple-800 to-purple-950',
+    sidebarBg: 'bg-purple-950',
+    sidebarText: 'text-purple-100',
     sidebarActive: 'text-white',
-    sidebarActiveBg: 'bg-emerald-600',
-    headerBg: 'bg-emerald-900',
-    badgeBg: 'bg-cyan-400',
-    badgeText: 'text-emerald-900',
-    hex: '#059669',
-    hexLight: '#ecfdf5',
+    sidebarActiveBg: 'bg-purple-700',
+    headerBg: 'bg-white',
+    badgeBg: 'bg-green-500',
+    badgeText: 'text-white',
+    hex: '#7c3aed',
+    hexLight: '#f5f3ff',
+    sidebarHex: '#2e1065',
+    accentHex: '#22c55e',
+    borderHex: '#e2e8f0',
+    bgHex: '#f8fafc',
   },
 };

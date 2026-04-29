@@ -54,12 +54,11 @@ class Database {
       const result = await this.pool.query<T>(text, params);
       const duration = Date.now() - start;
 
-      // Log slow queries (> 1 second)
+      // Log slow queries (> 1 second) — never log params (may contain PII/secrets)
       if (duration > 1000) {
         logger.warn('Slow query detected', {
           query: text,
           duration,
-          params,
         });
       }
 
@@ -71,9 +70,9 @@ class Database {
 
       return result;
     } catch (error) {
+      // Never log params — they may contain passwords, tokens, or PII
       logger.error('Query execution failed', {
         query: text,
-        params,
         error,
       });
       throw error;

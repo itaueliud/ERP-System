@@ -23,7 +23,7 @@ const TEST_JWT_SECRET = 'test_secret_for_expired_token_property_tests';
 const ROLES = [
   'CEO', 'CoS', 'CFO', 'COO', 'CTO', 'EA',
   'HEAD_OF_TRAINERS', 'TRAINER', 'AGENT',
-  'OPERATIONS_USER', 'TECHNOLOGY_USER', 'DEVELOPER',
+  'OPERATIONS_USER', 'TECH_STAFF', 'DEVELOPER',
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

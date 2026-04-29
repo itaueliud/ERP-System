@@ -338,7 +338,7 @@ Before going live, ensure all blank values in `backend/.env.production` are popu
 - [ ] `JWT_REFRESH_SECRET` — Strong random secret (min 64 chars)
 - [ ] `SESSION_SECRET` — Strong random secret (min 64 chars)
 - [ ] `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — Production OAuth app
-- [ ] `JENGA_API_KEY` / `JENGA_MERCHANT_CODE` / `JENGA_WEBHOOK_SECRET`
+- [ ] `DARAJA_CONSUMER_KEY` / `DARAJA_CONSUMER_SECRET` / `DARAJA_SHORT_CODE` / `DARAJA_PASS_KEY` / `DARAJA_WEBHOOK_SECRET`
 - [ ] `FIREBASE_*` — Production Firebase project credentials
 - [ ] `SENDGRID_API_KEY`
 - [ ] `AFRICAS_TALKING_USERNAME` / `AFRICAS_TALKING_API_KEY`

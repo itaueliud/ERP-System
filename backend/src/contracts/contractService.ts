@@ -534,57 +534,96 @@ export class ContractGenerationService {
    * Requirement 9.11: Maintain complete history of all contract versions
    */
   async listContracts(filters: ListContractsFilters = {}): Promise<{
-    contracts: Contract[];
-    total: number;
-  }> {
-    try {
-      const conditions: string[] = [];
-      const values: any[] = [];
-      let paramIndex = 1;
+      contracts: Contract[];
+      total: number;
+    }> {
+      try {
+        const conditions: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
 
-      if (filters.projectId) {
-        conditions.push(`project_id = $${paramIndex++}`);
-        values.push(filters.projectId);
+        if (filters.projectId) {
+          conditions.push(`project_id = $${paramIndex++}`);
+          values.push(filters.projectId);
+        }
+
+        if (filters.status) {
+          conditions.push(`status = $${paramIndex++}`);
+          values.push(filters.status);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const countResult = await db.query(
+          `SELECT COUNT(*) FROM contracts ${whereClause}`,
+          values
+        );
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        const limit = filters.limit || 50;
+        const offset = filters.offset || 0;
+        const limitIdx = paramIndex++;
+        const offsetIdx = paramIndex;
+
+        // Base query — always works
+        const query = `
+          SELECT id, reference_number, project_id, version, content, pdf_url, status,
+                 created_by, created_at
+          FROM contracts
+          ${whereClause}
+          ORDER BY created_at DESC
+          LIMIT $${limitIdx} OFFSET $${offsetIdx}
+        `;
+        values.push(limit, offset);
+        const result = await db.query(query, values);
+
+        const baseContracts = result.rows.map((row: any) => this.mapContractFromDb(row));
+
+        // Enrich with project reference and team info (safe — team_id may not exist yet)
+        const projectIds = [...new Set(baseContracts.map((c: any) => c.projectId).filter(Boolean))];
+        const projectRefMap = new Map<string, { projectReference: string; teamId?: string; teamName?: string }>();
+        if (projectIds.length > 0) {
+          try {
+            const pResult = await db.query(
+              `SELECT p.id, p.reference_number,
+                      p.team_id, dt.name AS team_name
+               FROM projects p
+               LEFT JOIN developer_teams dt ON dt.id = p.team_id
+               WHERE p.id = ANY($1::uuid[])`,
+              [projectIds]
+            );
+            for (const row of pResult.rows) {
+              projectRefMap.set(row.id, {
+                projectReference: row.reference_number,
+                teamId:   row.team_id   ?? undefined,
+                teamName: row.team_name ?? undefined,
+              });
+            }
+          } catch {
+            // team_id column may not exist yet — try without it
+            try {
+              const pResult = await db.query(
+                `SELECT id, reference_number FROM projects WHERE id = ANY($1::uuid[])`,
+                [projectIds]
+              );
+              for (const row of pResult.rows) {
+                projectRefMap.set(row.id, { projectReference: row.reference_number });
+              }
+            } catch { /* ignore */ }
+          }
+        }
+
+        const contracts = baseContracts.map((c: any) => ({
+          ...c,
+          ...(projectRefMap.get(c.projectId) || {}),
+        }));
+
+        return { contracts, total };
+      } catch (error) {
+        logger.error('Failed to list contracts', { error, filters });
+        throw error;
       }
-
-      if (filters.status) {
-        conditions.push(`status = $${paramIndex++}`);
-        values.push(filters.status);
-      }
-
-      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-      // Count total
-      const countResult = await db.query(
-        `SELECT COUNT(*) FROM contracts ${whereClause}`,
-        values
-      );
-      const total = parseInt(countResult.rows[0].count, 10);
-
-      // Fetch contracts
-      const limit = filters.limit || 50;
-      const offset = filters.offset || 0;
-
-      const query = `
-        SELECT id, reference_number, project_id, version, content, pdf_url, status,
-               created_by, created_at
-        FROM contracts
-        ${whereClause}
-        ORDER BY created_at DESC
-        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-      `;
-
-      values.push(limit, offset);
-      const result = await db.query(query, values);
-
-      const contracts = result.rows.map((row: any) => this.mapContractFromDb(row));
-
-      return { contracts, total };
-    } catch (error) {
-      logger.error('Failed to list contracts', { error, filters });
-      throw error;
     }
-  }
 
   /**
    * Get a pre-signed download URL for a contract PDF

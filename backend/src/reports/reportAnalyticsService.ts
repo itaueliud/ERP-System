@@ -261,70 +261,92 @@ export class ReportAnalyticsService {
   }
 
   private async queryReports(
-    filters: ReportFilters & { userIds?: string[] }
-  ): Promise<{ reports: DailyReport[]; total: number }> {
-    const conditions: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+      filters: ReportFilters & { userIds?: string[] }
+    ): Promise<{ reports: DailyReport[]; total: number }> {
+      const conditions: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
 
-    if (filters.userIds && filters.userIds.length > 0) {
-      conditions.push(`user_id = ANY($${paramIndex++}::uuid[])`);
-      values.push(filters.userIds);
-    } else if (filters.userId) {
-      conditions.push(`user_id = $${paramIndex++}`);
-      values.push(filters.userId);
+      if (filters.userIds && filters.userIds.length > 0) {
+        conditions.push(`dr.user_id = ANY($${paramIndex++}::uuid[])`);
+        values.push(filters.userIds);
+      } else if (filters.userId) {
+        conditions.push(`dr.user_id = $${paramIndex++}`);
+        values.push(filters.userId);
+      }
+
+      if (filters.dateFrom) {
+        conditions.push(`dr.report_date >= $${paramIndex++}`);
+        values.push(filters.dateFrom);
+      }
+
+      if (filters.dateTo) {
+        conditions.push(`dr.report_date <= $${paramIndex++}`);
+        values.push(filters.dateTo);
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const countResult = await db.query(
+        `SELECT COUNT(*) FROM daily_reports dr ${whereClause}`,
+        values
+      );
+      const total = parseInt(countResult.rows[0].count, 10);
+
+      const limit = filters.limit ?? 100;
+      const offset = filters.offset ?? 0;
+
+      const limitIdx = paramIndex++;
+      const offsetIdx = paramIndex;
+
+      const dataResult = await db.query(
+        `SELECT dr.id,
+                dr.user_id,
+                dr.report_date,
+                dr.accomplishments,
+                dr.challenges,
+                dr.tomorrow_plan,
+                dr.hours_worked,
+                dr.submitted_at,
+                dr.created_at,
+                u.full_name    AS user_name,
+                u.email        AS user_email,
+                r.name         AS user_role,
+                d.name         AS user_department
+         FROM daily_reports dr
+         JOIN users u ON u.id = dr.user_id
+         JOIN roles r ON r.id = u.role_id
+         LEFT JOIN departments d ON d.id = u.department_id
+         ${whereClause}
+         ORDER BY dr.report_date DESC, dr.submitted_at DESC
+         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        [...values, limit, offset]
+      );
+
+      return {
+        reports: dataResult.rows.map((r) => this.mapReport(r)),
+        total,
+      };
     }
-
-    if (filters.dateFrom) {
-      conditions.push(`report_date >= $${paramIndex++}`);
-      values.push(filters.dateFrom);
-    }
-
-    if (filters.dateTo) {
-      conditions.push(`report_date <= $${paramIndex++}`);
-      values.push(filters.dateTo);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    const countResult = await db.query(
-      `SELECT COUNT(*) FROM daily_reports ${whereClause}`,
-      values
-    );
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const limit = filters.limit ?? 50;
-    const offset = filters.offset ?? 0;
-
-    const dataResult = await db.query(
-      `SELECT id, user_id, report_date, accomplishments, challenges, tomorrow_plan,
-              hours_worked, submitted_at, created_at
-       FROM daily_reports
-       ${whereClause}
-       ORDER BY report_date DESC, submitted_at DESC
-       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-      [...values, limit, offset]
-    );
-
-    return {
-      reports: dataResult.rows.map((r) => this.mapReport(r)),
-      total,
-    };
-  }
 
   private mapReport(row: any): DailyReport {
-    return {
-      id: row.id,
-      userId: row.user_id,
-      reportDate: row.report_date,
-      accomplishments: row.accomplishments,
-      challenges: row.challenges ?? undefined,
-      tomorrowPlan: row.tomorrow_plan ?? undefined,
-      hoursWorked: row.hours_worked != null ? parseFloat(row.hours_worked) : undefined,
-      submittedAt: row.submitted_at,
-      createdAt: row.created_at,
-    };
-  }
+      return {
+        id: row.id,
+        userId: row.user_id,
+        reportDate: row.report_date,
+        accomplishments: row.accomplishments,
+        challenges: row.challenges ?? undefined,
+        tomorrowPlan: row.tomorrow_plan ?? undefined,
+        hoursWorked: row.hours_worked != null ? parseFloat(row.hours_worked) : undefined,
+        submittedAt: row.submitted_at,
+        createdAt: row.created_at,
+        // Sender identity — populated when queried via executive/team routes
+        userName: row.user_name ?? undefined,
+        userEmail: row.user_email ?? undefined,
+        userRole: row.user_role ?? undefined,
+        userDepartment: row.user_department ?? undefined,
+      };
+    }
 
   /**
    * Count working days (Mon–Fri) between two dates inclusive.

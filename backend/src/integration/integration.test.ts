@@ -14,8 +14,8 @@
 
 // ─── Mock external services before any imports ───────────────────────────────
 
-jest.mock('../services/jenga/client', () => ({
-  jengaClient: {
+jest.mock('../services/daraja/client', () => ({
+  darajaClient: {
     initiateMpesaPayment: jest.fn(),
     initiateAirtelPayment: jest.fn(),
     initiateBankTransfer: jest.fn(),
@@ -87,7 +87,7 @@ import {
   NotificationPriority,
   NotificationType,
 } from '../notifications/notificationService';
-import { jengaClient } from '../services/jenga/client';
+import { darajaClient } from '../services/daraja/client';
 import { sendgridClient } from '../services/sendgrid/client';
 import { africasTalkingClient } from '../services/africas-talking/client';
 import { githubClient } from '../services/github/client';
@@ -375,14 +375,14 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
       ).rejects.toThrow('Invalid industry category');
     });
 
-    it('should initiate commitment payment via Jenga M-Pesa STK Push', async () => {
-      const jengaResponse = {
+    it('should initiate commitment payment via Daraja M-Pesa STK Push', async () => {
+      const darajaResponse = {
         requestId: 'REQ-001',
         status: 'INITIATED' as const,
         message: 'STK Push sent',
         transactionId: 'TXN-MPESA-001',
       };
-      (jengaClient.initiateMpesaPayment as jest.Mock).mockResolvedValue(jengaResponse);
+      (darajaClient.initiateMpesaPayment as jest.Mock).mockResolvedValue(darajaResponse);
 
       const paymentRow = makePaymentRow({
         transaction_id: 'TXN-MPESA-001',
@@ -399,7 +399,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
         'KES'
       );
 
-      expect(jengaClient.initiateMpesaPayment).toHaveBeenCalledWith(
+      expect(darajaClient.initiateMpesaPayment).toHaveBeenCalledWith(
         expect.objectContaining({ phoneNumber: clientPhone, amount: 500, currency: 'KES' })
       );
       expect(payment.status).toBe(PaymentStatus.PENDING);
@@ -416,7 +416,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
         timestamp: new Date().toISOString(),
       };
 
-      (jengaClient.verifyWebhookSignature as jest.Mock).mockReturnValue(true);
+      (darajaClient.verifyWebhookSignature as jest.Mock).mockReturnValue(true);
 
       const clientRow = makeClientRow({
         id: 'client-001',
@@ -434,14 +434,14 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
       await paymentService.handleWebhook('valid-signature', webhookPayload);
 
       // Verify webhook signature was checked
-      expect(jengaClient.verifyWebhookSignature).toHaveBeenCalledWith(
+      expect(darajaClient.verifyWebhookSignature).toHaveBeenCalledWith(
         'valid-signature',
         JSON.stringify(webhookPayload)
       );
     });
 
     it('should reject webhook with invalid signature', async () => {
-      (jengaClient.verifyWebhookSignature as jest.Mock).mockReturnValue(false);
+      (darajaClient.verifyWebhookSignature as jest.Mock).mockReturnValue(false);
 
       await expect(
         paymentService.handleWebhook('bad-signature', { transactionId: 'TXN-001', status: 'COMPLETED' })
@@ -606,13 +606,13 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
         payment_method: PaymentMethod.MPESA,
       });
 
-      const jengaResponse = {
+      const darajaResponse = {
         requestId: 'REQ-EXEC-001',
         status: 'INITIATED' as const,
         message: 'STK Push sent',
         transactionId: 'TXN-EXEC-001',
       };
-      (jengaClient.initiateMpesaPayment as jest.Mock).mockResolvedValue(jengaResponse);
+      (darajaClient.initiateMpesaPayment as jest.Mock).mockResolvedValue(darajaResponse);
 
       mockQuery
         .mockResolvedValueOnce({ rows: [approvalRow] })          // SELECT approval
@@ -628,7 +628,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
       expect(approval.status).toBe(ApprovalStatus.EXECUTED);
       expect(approval.executorId).toBe(eaId);
       expect(payment.transactionId).toBe('TXN-EXEC-001');
-      expect(jengaClient.initiateMpesaPayment).toHaveBeenCalled();
+      expect(darajaClient.initiateMpesaPayment).toHaveBeenCalled();
     });
   });
 
@@ -644,7 +644,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
       '/executive': [Role.EA, Role.CoS, Role.CFO],
       '/clevel': [Role.COO, Role.CTO],
       '/operations': [Role.OPERATIONS_USER],
-      '/technology': [Role.TECHNOLOGY_USER, Role.DEVELOPER],
+      '/technology': [Role.TECH_STAFF, Role.DEVELOPER],
       '/agents': [Role.AGENT],
       '/trainers': [Role.TRAINER, Role.HEAD_OF_TRAINERS],
     };
@@ -661,7 +661,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
 
     it('should restrict financial data to CEO, CoS, CFO, EA only', async () => {
       const financialRoles = [Role.CEO, Role.CoS, Role.CFO, Role.EA];
-      const nonFinancialRoles = [Role.COO, Role.CTO, Role.AGENT, Role.TRAINER, Role.OPERATIONS_USER, Role.TECHNOLOGY_USER, Role.DEVELOPER];
+      const nonFinancialRoles = [Role.COO, Role.CTO, Role.AGENT, Role.TRAINER, Role.OPERATIONS_USER, Role.TECH_STAFF, Role.DEVELOPER];
 
       for (const role of financialRoles) {
         const userRow = makeUserRow({ role });
@@ -715,7 +715,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
     });
 
     it('should verify Technology portal roles have GitHub access', () => {
-      const techRoles = [Role.TECHNOLOGY_USER, Role.DEVELOPER];
+      const techRoles = [Role.TECH_STAFF, Role.DEVELOPER];
       for (const role of techRoles) {
         const permissions = ROLE_PERMISSIONS[role];
         expect(permissions).toContain('access:technology_portal');
@@ -769,7 +769,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
       const expectedRoles = [
         Role.CEO, Role.CoS, Role.CFO, Role.COO, Role.CTO, Role.EA,
         Role.HEAD_OF_TRAINERS, Role.TRAINER, Role.AGENT,
-        Role.OPERATIONS_USER, Role.TECHNOLOGY_USER, Role.DEVELOPER,
+        Role.OPERATIONS_USER, Role.TECH_STAFF, Role.DEVELOPER,
       ];
       for (const role of expectedRoles) {
         expect(ROLE_PERMISSIONS[role]).toBeDefined();
@@ -1379,19 +1379,19 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Payment Method Tests (Jenga API)
+  // Payment Method Tests (Daraja API)
   // Requirements: 5.1-5.6
   // ═══════════════════════════════════════════════════════════════════════════
 
-  describe('Jenga API Payment Methods', () => {
+  describe('Daraja API Payment Methods', () => {
     it('should initiate Airtel Money payment', async () => {
-      const jengaResponse = {
+      const darajaResponse = {
         requestId: 'REQ-AIRTEL-001',
         status: 'INITIATED' as const,
         message: 'Airtel Money request sent',
         transactionId: 'TXN-AIRTEL-001',
       };
-      (jengaClient.initiateAirtelPayment as jest.Mock).mockResolvedValue(jengaResponse);
+      (darajaClient.initiateAirtelPayment as jest.Mock).mockResolvedValue(darajaResponse);
 
       const paymentRow = {
         id: 'pay-airtel-001',
@@ -1415,19 +1415,19 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
         reference: 'REF-001',
       });
 
-      expect(jengaClient.initiateAirtelPayment).toHaveBeenCalled();
+      expect(darajaClient.initiateAirtelPayment).toHaveBeenCalled();
       expect(payment.paymentMethod).toBe(PaymentMethod.AIRTEL_MONEY);
       expect(payment.status).toBe(PaymentStatus.PENDING);
     });
 
     it('should initiate bank transfer payment', async () => {
-      const jengaResponse = {
+      const darajaResponse = {
         requestId: 'REQ-BANK-001',
         status: 'INITIATED' as const,
         message: 'Bank transfer initiated',
         transactionId: 'TXN-BANK-001',
       };
-      (jengaClient.initiateBankTransfer as jest.Mock).mockResolvedValue(jengaResponse);
+      (darajaClient.initiateBankTransfer as jest.Mock).mockResolvedValue(darajaResponse);
 
       const paymentRow = {
         id: 'pay-bank-001',
@@ -1452,7 +1452,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
         reference: 'REF-BANK-001',
       });
 
-      expect(jengaClient.initiateBankTransfer).toHaveBeenCalledWith(
+      expect(darajaClient.initiateBankTransfer).toHaveBeenCalledWith(
         '1234567890',
         'KCB',
         100000,
@@ -1463,13 +1463,13 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
     });
 
     it('should initiate Visa card payment', async () => {
-      const jengaResponse = {
+      const darajaResponse = {
         requestId: 'REQ-CARD-001',
         status: 'INITIATED' as const,
         message: 'Card payment initiated',
         transactionId: 'TXN-CARD-001',
       };
-      (jengaClient.initiateCardPayment as jest.Mock).mockResolvedValue(jengaResponse);
+      (darajaClient.initiateCardPayment as jest.Mock).mockResolvedValue(darajaResponse);
 
       const paymentRow = {
         id: 'pay-card-001',
@@ -1497,7 +1497,7 @@ describe('Integration Tests - TechSwiftTrix ERP System', () => {
         reference: 'REF-CARD-001',
       });
 
-      expect(jengaClient.initiateCardPayment).toHaveBeenCalled();
+      expect(darajaClient.initiateCardPayment).toHaveBeenCalled();
       expect(payment.paymentMethod).toBe(PaymentMethod.VISA);
     });
 

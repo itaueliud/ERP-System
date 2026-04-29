@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * TechSwiftTrix (TST) Logo Component

@@ -1,7 +1,8 @@
-import { Server as HttpServer } from 'http';
+import type { Server as HttpServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { authService } from '../auth/authService';
 import { chatService, MAX_FILE_SIZE_BYTES } from './chatService';
+import { realtimeEvents, RealtimeEvent } from '../realtime/realtimeEvents';
 import logger from '../utils/logger';
 
 /**
@@ -15,10 +16,18 @@ export interface ConnectedUser {
   connectedAt: Date;
 }
 
+export interface OnlineUserInfo {
+  userId: string;
+  portal: string;
+  connectedAt: Date;
+}
+
 export class ChatServer {
   private io: SocketIOServer | null = null;
   /** Map of userId → set of socketIds (a user may have multiple tabs) */
   private onlineUsers: Map<string, Set<string>> = new Map();
+  /** Map of userId → portal name */
+  private userPortals: Map<string, string> = new Map();
 
   /**
    * Attach Socket.IO to the HTTP server.
@@ -35,7 +44,7 @@ export class ChatServer {
     });
 
     // JWT authentication middleware for Socket.IO
-    this.io.use(async (socket, next) => {
+    this.io.use(async (socket: any, next: any) => {
       try {
         const token =
           socket.handshake.auth?.token ||
@@ -59,6 +68,8 @@ export class ChatServer {
         (socket as any).userId = user.id;
         (socket as any).userEmail = user.email;
         (socket as any).userRole = user.role;
+        // Portal is sent by the client on connect: socket.handshake.auth.portal
+        (socket as any).userPortal = socket.handshake.auth?.portal || 'unknown';
 
         next();
       } catch (err) {
@@ -69,6 +80,13 @@ export class ChatServer {
 
     this.io.on('connection', (socket: Socket) => {
       this.handleConnection(socket);
+    });
+
+    // Forward domain events from the event bus to all connected clients
+    realtimeEvents.onRealtime((event: RealtimeEvent) => {
+      if (this.io) {
+        this.io.emit(`data:${event.type}`, event.payload);
+      }
     });
 
     logger.info('Socket.IO chat server initialized');
@@ -91,12 +109,13 @@ export class ChatServer {
       this.onlineUsers.set(userId, new Set());
     }
     this.onlineUsers.get(userId)!.add(socket.id);
+    this.userPortals.set(userId, (socket as any).userPortal || 'unknown');
 
     logger.info('User connected via WebSocket', { userId, socketId: socket.id });
 
     // Broadcast presence update to all clients
     if (this.io) {
-      this.io.emit('presence:update', { userId, status: 'online' });
+      this.io.emit('presence:update', { userId, status: 'online', portal: this.userPortals.get(userId) });
     }
 
     // Register event handlers
@@ -120,6 +139,7 @@ export class ChatServer {
       sockets.delete(socket.id);
       if (sockets.size === 0) {
         this.onlineUsers.delete(userId);
+        this.userPortals.delete(userId);
         // Broadcast offline status only when all sockets are gone
         if (this.io) {
           this.io.emit('presence:update', { userId, status: 'offline' });
@@ -179,6 +199,17 @@ export class ChatServer {
   }
 
   /**
+   * Get online users with their portal info.
+   */
+  getOnlineUsersWithPortal(): OnlineUserInfo[] {
+    return Array.from(this.onlineUsers.keys()).map(userId => ({
+      userId,
+      portal: this.userPortals.get(userId) || 'unknown',
+      connectedAt: new Date(),
+    }));
+  }
+
+  /**
    * Check if a specific user is online.
    * Requirement 13.10: Display user online/offline status
    */
@@ -195,19 +226,18 @@ export class ChatServer {
    */
   async handleMessageSend(
     socket: Socket,
-    data: { roomId: string; content: string; fileId?: string; fileSizeBytes?: number }
+    data: { roomId: string; content: string; fileId?: string; fileSizeBytes?: number; fileName?: string; mimeType?: string }
   ): Promise<void> {
     const userId: string = (socket as any).userId;
 
     try {
-      const { roomId, content, fileId, fileSizeBytes } = data;
+      const { roomId, content, fileId, fileSizeBytes, fileName, mimeType } = data;
 
       if (!roomId || !content) {
         socket.emit('message:error', { error: 'roomId and content are required' });
         return;
       }
 
-      // Validate file attachment size (Requirement 13.8)
       if (fileId && fileSizeBytes !== undefined && fileSizeBytes > MAX_FILE_SIZE_BYTES) {
         socket.emit('message:error', {
           error: `File size exceeds maximum allowed size of ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB`,
@@ -215,7 +245,7 @@ export class ChatServer {
         return;
       }
 
-      const message = await chatService.sendMessage(roomId, userId, content, fileId);
+      const message = await chatService.sendMessage(roomId, userId, content, fileId, fileName, mimeType);
 
       // Emit to all room members (Requirement 13.4: within 2 seconds)
       this.emitToRoom(roomId, 'message:new', message);

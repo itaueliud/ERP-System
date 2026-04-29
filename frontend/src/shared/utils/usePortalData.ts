@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../api/apiClient';
+import { useRealtime } from './RealtimeContext';
 
 interface UsePortalDataResult<T> {
   data: T;
@@ -16,12 +17,15 @@ interface UsePortalDataResult<T> {
 export function usePortalData<T>(
   endpoint: string,
   fallback: T,
-  transform?: (raw: any) => T
+  transform?: (raw: any) => T,
+  /** Socket.IO event names that should trigger an automatic refetch */
+  realtimeEvents?: string[]
 ): UsePortalDataResult<T> {
   const [data, setData] = useState<T>(fallback);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
+  const { subscribe } = useRealtime();
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -44,15 +48,27 @@ export function usePortalData<T>(
 
   useEffect(() => { fetch(); }, [fetch]);
 
+  // Subscribe to realtime events and refetch when they fire
+  useEffect(() => {
+    if (!realtimeEvents || realtimeEvents.length === 0) return;
+    const unsubs = realtimeEvents.map(event => subscribe(event, () => { fetch(); }));
+    return () => unsubs.forEach(u => u());
+  }, [realtimeEvents, subscribe, fetch]);
+
   return { data, loading, error, refetch: fetch, isLive };
 }
 
 /**
  * Fetch multiple endpoints in parallel, each with its own fallback.
+ * Pass `realtimeEvents` to auto-refetch all keys when any of those events fire.
  */
 export function useMultiPortalData<T extends Record<string, any>>(
-  requests: { key: keyof T; endpoint: string; fallback: T[keyof T]; transform?: (raw: any) => T[keyof T] }[]
+  requests: { key: keyof T; endpoint: string; fallback: T[keyof T]; transform?: (raw: any) => T[keyof T] }[],
+  /** Socket.IO event names that should trigger a full refetch */
+  realtimeEvents?: string[]
 ): { data: T; loading: boolean; isLive: boolean; refetch: (keys?: (keyof T)[]) => void } {
+  const { subscribe } = useRealtime();
+
   const [data, setData] = useState<T>(() => {
     const init = {} as T;
     for (const r of requests) init[r.key] = r.fallback;
@@ -118,6 +134,13 @@ export function useMultiPortalData<T extends Record<string, any>>(
 
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Subscribe to realtime events and refetch all data when they fire
+  useEffect(() => {
+    if (!realtimeEvents || realtimeEvents.length === 0) return;
+    const unsubs = realtimeEvents.map(event => subscribe(event, () => { fetchAll(); }));
+    return () => unsubs.forEach(u => u());
+  }, [realtimeEvents, subscribe, fetchAll]);
 
   return { data, loading, isLive, refetch: fetchAll };
 }

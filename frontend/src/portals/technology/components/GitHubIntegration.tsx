@@ -1,170 +1,110 @@
-import React, { useState } from 'react';
-import { Card } from '../../../shared/components';
-import type { GitHubRepo, GitHubCommit, DeveloperContribution } from '../types';
+import { useState, useEffect } from 'react';
+import { DataTable, PortalButton, SectionHeader } from '../../../shared/components/layout/PortalLayout';
 
-interface Props {
-  repos: GitHubRepo[];
-  commits: GitHubCommit[];
-  contributions: DeveloperContribution[];
+interface Repository {
+  id: string;
+  name: string;
+  language?: string;
+  stars?: number;
+  openPRs?: number;
+  lastCommit?: string;
 }
 
-type Tab = 'repos' | 'commits' | 'contributors';
+interface Commit {
+  sha: string;
+  message: string;
+  author?: string;
+  date?: string;
+  repo?: string;
+}
 
-export function GitHubIntegration({ repos, commits, contributions }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('repos');
+export default function GitHubIntegration({ themeHex }: { themeHex: string }) {
+  const [repos, setRepos] = useState<Repository[]>([]);
+  const [commits, setCommits] = useState<Commit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedRepo, setSelectedRepo] = useState<string>('');
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'repos', label: 'Repositories' },
-    { id: 'commits', label: 'Recent Commits' },
-    { id: 'contributors', label: 'Contributors' },
-  ];
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { apiClient } = await import('../../../shared/api/apiClient');
+      const [reposRes, commitsRes] = await Promise.all([
+        apiClient.get('/api/v1/github/repos'),
+        apiClient.get('/api/v1/github/commits')
+      ]);
+      setRepos(reposRes.data?.repos || reposRes.data?.data || reposRes.data || []);
+      setCommits(commitsRes.data?.commits || commitsRes.data?.data || commitsRes.data || []);
+    } catch { /* silent */ } finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const filteredCommits = selectedRepo
+    ? commits.filter(c => c.repo === selectedRepo)
+    : commits;
 
   return (
-    <section aria-label="GitHub integration">
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">GitHub Integration</h2>
+    <div>
+      <SectionHeader
+        title="GitHub Integration"
+        subtitle="Repository activity and commits"
+        action={<PortalButton size="sm" variant="secondary" onClick={loadData}>Refresh</PortalButton>}
+      />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <Card variant="elevated" padding="md">
-          <p className="text-sm text-gray-500">Repositories</p>
-          <p className="text-2xl font-bold text-gray-900">{repos.length}</p>
-        </Card>
-        <Card variant="elevated" padding="md">
-          <p className="text-sm text-gray-500">Total Commits</p>
-          <p className="text-2xl font-bold text-gray-900">
-            {repos.reduce((s, r) => s + r.commitCount, 0).toLocaleString()}
-          </p>
-        </Card>
-        <Card variant="elevated" padding="md">
-          <p className="text-sm text-gray-500">Open Issues</p>
-          <p className="text-2xl font-bold text-orange-600">
-            {repos.reduce((s, r) => s + r.openIssues, 0)}
-          </p>
-        </Card>
+      <div className="mb-6">
+        <h3 className="font-semibold text-gray-800 mb-3">Repositories</h3>
+        {loading ? (
+          <p className="text-sm text-gray-400">Loading repositories...</p>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'name', label: 'Repository' },
+              { key: 'language', label: 'Language', render: v => v || '—' },
+              { key: 'stars', label: '⭐ Stars', render: v => v || 0 },
+              { key: 'openPRs', label: 'Open PRs', render: v => v || 0 },
+              { key: 'lastCommit', label: 'Last Commit', render: v => v ? new Date(v).toLocaleDateString() : '—' },
+              { key: 'name', label: 'Actions', render: (name) => (
+                <PortalButton size="sm" color={themeHex} onClick={() => setSelectedRepo(name)}>
+                  View Commits
+                </PortalButton>
+              )},
+            ]}
+            rows={repos}
+            emptyMessage="No repositories found"
+          />
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-4">
-        <nav className="flex gap-4" role="tablist" aria-label="GitHub tabs">
-          {tabs.map((tab) => (
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-800">
+            Recent Commits {selectedRepo && `— ${selectedRepo}`}
+          </h3>
+          {selectedRepo && (
             <button
-              key={tab.id}
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+              onClick={() => setSelectedRepo('')}
+              className="text-sm text-gray-500 hover:text-gray-800"
             >
-              {tab.label}
+              Clear filter
             </button>
-          ))}
-        </nav>
+          )}
+        </div>
+        {loading ? (
+          <p className="text-sm text-gray-400">Loading commits...</p>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'sha', label: 'SHA', render: v => (v || 'abc1234').slice(0, 7) },
+              { key: 'message', label: 'Message' },
+              { key: 'author', label: 'Author', render: v => v || '—' },
+              { key: 'repo', label: 'Repository', render: v => v || '—' },
+              { key: 'date', label: 'Date', render: v => v ? new Date(v).toLocaleDateString() : '—' },
+            ]}
+            rows={filteredCommits}
+            emptyMessage="No commits found"
+          />
+        )}
       </div>
-
-      {activeTab === 'repos' && (
-        <div role="tabpanel" aria-label="Repositories">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
-                  <th className="pb-2 font-medium">Repository</th>
-                  <th className="pb-2 font-medium">Language</th>
-                  <th className="pb-2 font-medium text-right">Stars</th>
-                  <th className="pb-2 font-medium text-right">Open Issues</th>
-                  <th className="pb-2 font-medium text-right">Commits</th>
-                  <th className="pb-2 font-medium text-right">Last Commit</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {repos.map((repo) => (
-                  <tr key={repo.id} className="hover:bg-gray-50">
-                    <td className="py-3">
-                      <p className="font-medium text-blue-700">{repo.name}</p>
-                      <p className="text-xs text-gray-400">{repo.description}</p>
-                    </td>
-                    <td className="py-3">
-                      <span className="flex items-center gap-1 text-xs">
-                        <span className="w-2 h-2 rounded-full bg-yellow-400" />
-                        {repo.language}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right">⭐ {repo.stars}</td>
-                    <td className="py-3 text-right">
-                      <span className={repo.openIssues > 5 ? 'text-orange-600 font-medium' : 'text-gray-700'}>
-                        {repo.openIssues}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right text-gray-700">{repo.commitCount.toLocaleString()}</td>
-                    <td className="py-3 text-right text-gray-400 text-xs">
-                      {new Date(repo.lastCommit).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'commits' && (
-        <div className="space-y-2" role="tabpanel" aria-label="Recent commits">
-          {commits.map((commit) => (
-            <Card key={commit.sha} variant="outlined" padding="sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">{commit.message}</p>
-                  <div className="flex gap-3 mt-1 text-xs text-gray-500">
-                    <span className="font-mono text-blue-600">{commit.sha}</span>
-                    <span>{commit.author}</span>
-                    <span className="text-gray-400">{commit.repo}</span>
-                  </div>
-                </div>
-                <div className="text-right text-xs shrink-0">
-                  <p className="text-green-600">+{commit.additions}</p>
-                  <p className="text-red-600">-{commit.deletions}</p>
-                  <p className="text-gray-400 mt-1">{new Date(commit.date).toLocaleDateString()}</p>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {activeTab === 'contributors' && (
-        <div role="tabpanel" aria-label="Contributors">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
-                  <th className="pb-2 font-medium">#</th>
-                  <th className="pb-2 font-medium">Developer</th>
-                  <th className="pb-2 font-medium text-right">Commits</th>
-                  <th className="pb-2 font-medium text-right">PRs</th>
-                  <th className="pb-2 font-medium text-right">Reviews</th>
-                  <th className="pb-2 font-medium text-right">Lines Added</th>
-                  <th className="pb-2 font-medium text-right">Lines Removed</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {contributions.map((c, i) => (
-                  <tr key={c.developer} className="hover:bg-gray-50">
-                    <td className="py-3 text-gray-400 font-bold">#{i + 1}</td>
-                    <td className="py-3 font-medium text-gray-900">{c.developer}</td>
-                    <td className="py-3 text-right text-gray-700">{c.commits}</td>
-                    <td className="py-3 text-right text-gray-700">{c.pullRequests}</td>
-                    <td className="py-3 text-right text-gray-700">{c.reviews}</td>
-                    <td className="py-3 text-right text-green-600">+{c.linesAdded.toLocaleString()}</td>
-                    <td className="py-3 text-right text-red-600">-{c.linesRemoved.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </section>
+    </div>
   );
 }

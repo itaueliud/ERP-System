@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from '../../shared/utils/router';
 import { PortalLayout, StatCard, SectionHeader, DataTable, StatusBadge, PortalButton } from '../../shared/components/layout/PortalLayout';
 import { PORTAL_THEMES } from '../../shared/theme/portalThemes';
 import { useAuth } from '../../shared/components/auth/AuthContext';
 import { useMultiPortalData } from '../../shared/utils/usePortalData';
+import { AFRICAN_COUNTRIES } from '../../shared/utils/africanCountries';
+import ChatPanel from '../../shared/components/chat/ChatPanel';
+import { TRAINERS_FAQS } from '../../shared/data/portalFAQs';
+import PlotConnectProperties from '../../shared/components/plotconnect/PlotConnectProperties';
 
 const theme = PORTAL_THEMES.trainers;
 const cardCls = 'rounded-2xl p-5';
@@ -25,6 +29,54 @@ const I = {
   country: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
 };
 
+// ─── Country combobox ─────────────────────────────────────────────────────────
+function CountryCombobox({ value, onChange, inputCls }: { value: string; onChange: (v: string) => void; inputCls: string }) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Keep input in sync when parent resets
+  useEffect(() => { setQuery(value); }, [value]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = query.trim()
+    ? AFRICAN_COUNTRIES.filter(c => c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
+    : AFRICAN_COUNTRIES.slice(0, 8);
+
+  const select = (name: string) => { onChange(name); setQuery(name); setOpen(false); };
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Type to search country…"
+        className={inputCls}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto text-sm">
+          {filtered.map(c => (
+            <li key={c.code}
+              onMouseDown={() => select(c.name)}
+              className="px-3 py-2 cursor-pointer hover:bg-purple-50 flex items-center justify-between">
+              <span>{c.name}</span>
+              <span className="text-xs text-gray-400">{c.region}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ─── Shared: Daily Report Form ────────────────────────────────────────────────
 function DailyReportForm() {
   const [form, setForm] = useState({ accomplishments: '', challenges: '', plan: '', hours: '' });
@@ -33,6 +85,7 @@ function DailyReportForm() {
   const [ok, setOk] = useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
+  const clear = () => setForm({ accomplishments: '', challenges: '', plan: '', hours: '' });
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setSubmitting(true); setMsg('');
     try {
@@ -42,8 +95,7 @@ function DailyReportForm() {
         hoursWorked: parseFloat(form.hours) || undefined,
         reportDate: new Date().toISOString().split('T')[0],
       });
-      setOk(true); setMsg('Report submitted!');
-      setForm({ accomplishments: '', challenges: '', plan: '', hours: '' });
+      setOk(true); setMsg('Report submitted!'); clear();
     } catch (err: any) { setOk(false); setMsg(err?.response?.data?.error || 'Failed to submit'); }
     finally { setSubmitting(false); }
   };
@@ -55,51 +107,55 @@ function DailyReportForm() {
         <div className="mb-4"><label className={labelCls}>Challenges</label><textarea rows={3} value={form.challenges} onChange={set('challenges')} className={`${inputCls} resize-none`} /></div>
         <div className="mb-4"><label className={labelCls}>Plan for tomorrow</label><textarea rows={3} value={form.plan} onChange={set('plan')} className={`${inputCls} resize-none`} /></div>
         <div className="mb-6"><label className={labelCls}>Hours worked</label><input type="number" min={0} max={24} value={form.hours} onChange={set('hours')} className={inputCls} /></div>
-        <PortalButton color={theme.hex} fullWidth disabled={submitting}>{submitting ? 'Submitting…' : 'Submit Report'}</PortalButton>
+        <div className="flex gap-2">
+          <PortalButton color={theme.hex} fullWidth disabled={submitting}>{submitting ? 'Submitting…' : 'Submit Report'}</PortalButton>
+          <PortalButton variant="secondary" onClick={clear} disabled={submitting}>Clear</PortalButton>
+        </div>
       </form>
     </div>
   );
 }
 
 // ─── Shared: Chat UI ──────────────────────────────────────────────────────────
-function ChatSection() {
-  const [messages, setMessages] = useState<{ from: string; text: string; time: string }[]>([]);
-  const [input, setInput] = useState('');
-  const send = () => {
-    if (!input.trim()) return;
-    setMessages(m => [...m, { from: 'You', text: input.trim(), time: new Date().toLocaleTimeString() }]);
-    setInput('');
-  };
+function ChatSection({ token, currentUserId, portal }: { token: string; currentUserId: string; portal: string }) {
   return (
-    <div className="max-w-2xl flex flex-col gap-4">
-      <div className={`${cardCls} min-h-64 flex flex-col gap-2`} style={cardStyle}>
-        {messages.length === 0 && <p className="text-sm text-gray-400 text-center py-8">No messages yet</p>}
-        {messages.map((m, i) => (
-          <div key={i} className="flex gap-2 items-start">
-            <span className="text-xs font-semibold text-gray-600 w-10 flex-shrink-0">{m.from}</span>
-            <span className="text-sm text-gray-800 flex-1">{m.text}</span>
-            <span className="text-xs text-gray-400">{m.time}</span>
-          </div>
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Type a message…" className={`${inputCls} flex-1`} />
-        <label className="cursor-pointer flex items-center px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-all">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-          <input type="file" className="hidden" />
-        </label>
-        <PortalButton color={theme.hex} onClick={send}>Send</PortalButton>
-      </div>
+    <div style={{ height: 'calc(100vh - 180px)', minHeight: 400 }}>
+      <ChatPanel token={token} currentUserId={currentUserId} portal={portal} inlineMode />
     </div>
   );
 }
 
 // ─── Shared: Notifications ────────────────────────────────────────────────────
-function NotificationsSection({ notifs }: { notifs: any[] }) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function NotificationsSection({ notifs, refetch }: { notifs: any[]; refetch?: () => void }) {
+  const [localNotifs, setLocalNotifs] = React.useState(notifs);
+  React.useEffect(() => setLocalNotifs(notifs), [notifs]);
+  const markRead = async (id: string) => {
+    try {
+      const { apiClient } = await import('../../shared/api/apiClient');
+      await apiClient.patch(`/api/v1/notifications/${id}/read`);
+      setLocalNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+      refetch?.();
+    } catch { /* silent */ }
+  };
+  const markAllRead = async () => {
+    try {
+      const { apiClient } = await import('../../shared/api/apiClient');
+      await Promise.all(localNotifs.filter(n => !n.read).map(n => apiClient.patch(`/api/v1/notifications/${n.id}/read`)));
+      setLocalNotifs(prev => prev.map(n => ({ ...n, read: true })));
+      refetch?.();
+    } catch { /* silent */ }
+  };
+  const unread = localNotifs.filter(n => !n.read).length;
   return (
     <div className="flex flex-col gap-3 max-w-2xl">
-      {notifs.length === 0 && <p className="text-sm text-gray-400">No notifications</p>}
-      {notifs.map((n: any, i: number) => (
+      {unread > 0 && (
+        <div className="flex justify-end">
+          <PortalButton size="sm" variant="secondary" onClick={markAllRead}>Mark all as read ({unread})</PortalButton>
+        </div>
+      )}
+      {localNotifs.length === 0 && <p className="text-sm text-gray-400">No notifications</p>}
+      {localNotifs.map((n: any, i: number) => (
         <div key={n.id || i} className={`${cardCls} flex items-start gap-3`} style={cardStyle}>
           <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.read ? 'bg-gray-300' : 'bg-emerald-500'}`} />
           <div className="flex-1">
@@ -107,6 +163,9 @@ function NotificationsSection({ notifs }: { notifs: any[] }) {
             {n.body && <p className="text-xs text-gray-500 mt-0.5">{n.body}</p>}
             <p className="text-xs text-gray-400 mt-1">{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</p>
           </div>
+          {!n.read && (
+            <button onClick={() => markRead(n.id)} className="text-xs text-emerald-600 hover:underline flex-shrink-0 mt-0.5">Mark read</button>
+          )}
         </div>
       ))}
     </div>
@@ -115,13 +174,12 @@ function NotificationsSection({ notifs }: { notifs: any[] }) {
 
 // ─── TRAINER Dashboard ────────────────────────────────────────────────────────
 const TRAINER_NAV = [
-  { id: 'overview', label: 'Overview', icon: I.overview },
-  { id: 'my-agents', label: 'My Agents', icon: I.agents },
-  { id: 'client-leads', label: 'Client Leads', icon: I.leads },
-  { id: 'achievements', label: 'Achievements', icon: I.achieve },
-  { id: 'chat-cfo', label: 'Chat with CFO', icon: I.chat },
-  { id: 'notifications', label: 'Notifications', icon: I.notif },
-  { id: 'daily-report', label: 'Daily Report', icon: I.report },
+  { id: 'overview',    label: 'Overview',    icon: I.overview },
+  { id: 'my-agents',   label: 'My Agents',   icon: I.agents },
+  { id: 'client-leads',label: 'Client Leads',icon: I.leads },
+  { id: 'achievements',label: 'Achievements',icon: I.achieve },
+  { id: 'chat-cfo',    label: 'Chat with CFO',icon: I.chat },
+  { id: 'daily-report',label: 'Daily Report',icon: I.report },
 ];
 
 function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (keys?: any[]) => void; user: any; onLogout: () => void }) {
@@ -137,10 +195,11 @@ function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetc
   const notifs = data.notifications || [];
   const metrics = data.metrics || {};
 
-  const unread = notifs.filter((n: any) => !n.read).length;
-  const nav = TRAINER_NAV.map(n => n.id === 'notifications' ? { ...n, badge: unread } : n);
+  const nav = TRAINER_NAV;
 
-  const activeLeads = clients.filter((c: any) => c.status === 'ACTIVE' || c.leadStatus === 'ACTIVE').length;
+  const activeLeads = clients.filter((c: any) =>
+    ['CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED', 'NEGOTIATION'].includes(c.status)
+  ).length;
   const convertedThisMonth = clients.filter((c: any) => {
     const converted = c.status === 'CONVERTED' || c.leadStatus === 'CONVERTED';
     if (!converted) return false;
@@ -168,12 +227,16 @@ function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetc
       activeSection={section}
       onSectionChange={setSection}
       onLogout={onLogout}
+      notifications={notifs}
+      onNotificationRead={async (id) => { try { const { apiClient } = await import('../../shared/api/apiClient'); await apiClient.patch(`/api/v1/notifications/${id}/read`); refetch(['notifications']); } catch { /* silent */ } }}
+      faqs={TRAINERS_FAQS}
+      portalName="Trainers Portal"
     >
       {section === 'overview' && (
         <div>
           <SectionHeader title="Trainer Overview" subtitle="Your performance at a glance" />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="My Agents" value={agents.length} icon={I.agents} color={theme.hex} />
+            <StatCard label="My Agents" value={agents.length || metrics.agentCount || 0} icon={I.agents} color={theme.hex} />
             <StatCard label="Active Leads" value={activeLeads || metrics.activeLeads || 0} icon={I.leads} color={theme.hex} />
             <StatCard label="Converted This Month" value={convertedThisMonth || metrics.convertedThisMonth || 0} icon={I.achieve} color={theme.hex} />
             <StatCard label="Country Performance" value={metrics.countryScore ?? '—'} icon={I.country} color={theme.hex} />
@@ -205,9 +268,12 @@ function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetc
                       <PortalButton size="sm" variant="secondary" onClick={() => setPriorityAgentId(null)}>Cancel</PortalButton>
                     </div>
                   ) : (
-                    <PortalButton size="sm" color={theme.hex} onClick={() => { setPriorityAgentId(row.id || row._id); setPriorityTier('Top'); }}>
-                      Modify Priority Listing
-                    </PortalButton>
+                    <div className="flex gap-1.5">
+                      <PortalButton size="sm" variant="secondary" onClick={() => alert(`Agent: ${row.name}\nPhone: ${row.phone || '—'}\nRegion: ${row.region || '—'}\nScore: ${row.performanceScore ?? '—'}\nAssigned: ${row.assignedDate ? new Date(row.assignedDate).toLocaleDateString() : '—'}`)}>View</PortalButton>
+                      <PortalButton size="sm" color={theme.hex} onClick={() => { setPriorityAgentId(row.id || row._id); setPriorityTier('Top'); }}>
+                        Priority
+                      </PortalButton>
+                    </div>
                   ),
               },
             ]}
@@ -227,6 +293,9 @@ function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetc
               { key: 'status', label: 'Status', render: v => <StatusBadge status={v || 'PENDING'} /> },
               { key: 'createdAt', label: 'Date Added', render: v => v ? new Date(v).toLocaleDateString() : '—' },
               { key: 'paymentStatus', label: 'Payment', render: v => <StatusBadge status={v || 'PENDING'} /> },
+              { key: 'id', label: 'Actions', render: (_v, row: any) => (
+                <PortalButton size="sm" variant="secondary" onClick={() => alert(`Client: ${row.name || row.clientName || '—'}\nAgent: ${row.agentName || row.agent || '—'}\nStatus: ${row.status || '—'}\nPayment: ${row.paymentStatus || '—'}\nAdded: ${row.createdAt ? new Date(row.createdAt).toLocaleDateString() : '—'}`)}>View</PortalButton>
+              )},
             ]}
             rows={clients}
             emptyMessage="No client leads"
@@ -251,8 +320,7 @@ function TrainerDashboard({ data, refetch, user, onLogout }: { data: any; refetc
         </div>
       )}
 
-      {section === 'chat-cfo' && <div><SectionHeader title="Chat with CFO" /><ChatSection /></div>}
-      {section === 'notifications' && <div><SectionHeader title="Notifications" /><NotificationsSection notifs={notifs} /></div>}
+      {section === 'chat-cfo' && <div><SectionHeader title="Chat with CFO" /><ChatSection token={user?.token || ''} currentUserId={user?.id || ''} portal="Operations Portal" /></div>}
       {section === 'daily-report' && <div><SectionHeader title="Daily Report" subtitle="Submit your daily report" /><DailyReportForm /></div>}
     </PortalLayout>
   );
@@ -265,9 +333,8 @@ const HOT_NAV = [
   { id: 'agents',         label: 'Agents',                icon: I.agents },
   { id: 'achievements',   label: 'Achievements',          icon: I.achieve },
   { id: 'add-agent',      label: 'Add Agent',             icon: I.addAgent },
-  { id: 'assign-client',  label: 'Assign Converted Client', icon: I.leads },  // doc §4 HoT feature
+  { id: 'assign-client',  label: 'Assign Converted Client', icon: I.leads },
   { id: 'chat',           label: 'Chat',                  icon: I.chat },
-  { id: 'notifications',  label: 'Notifications',         icon: I.notif },
   { id: 'report',         label: 'Report',                icon: I.report },
 ];
 
@@ -277,10 +344,14 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
   const [reassignTrainerId, setReassignTrainerId] = useState('');
   const [reassignMsg, setReassignMsg] = useState('');
   const [reassignOk, setReassignOk] = useState(false);
-  const [addForm, setAddForm] = useState({ phone: '', idNumber: '', coverPhoto: null as File | null });
+  const [addForm, setAddForm] = useState({ fullName: '', phone: '', idNumber: '', country: '', paymentType: 'MPESA', paymentAccount: '', coverPhoto: null as File | null });
   const [addMsg, setAddMsg] = useState('');
   const [addOk, setAddOk] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [assignClientForm, setAssignClientForm] = useState({ clientId: '', accountExecutiveId: '' });
+  const [assignClientMsg, setAssignClientMsg] = useState('');
+  const [assignClientOk, setAssignClientOk] = useState(false);
+  const [assignClientBusy, setAssignClientBusy] = useState(false);
 
   const agents = data.myAgents || [];
   const trainers = data.trainers || [];
@@ -288,14 +359,13 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
   const notifs = data.notifications || [];
   const metrics = data.metrics || {};
 
-  const unread = notifs.filter((n: any) => !n.read).length;
-  const nav = HOT_NAV.map(n => n.id === 'notifications' ? { ...n, badge: unread } : n);
+  const nav = HOT_NAV;
 
   const bestTrainer = trainers.reduce((best: any, t: any) =>
     (t.performanceScore || 0) > (best?.performanceScore || 0) ? t : best, null);
 
   const activeLeads = (data.clients || []).filter((c: any) =>
-    c.status === 'ACTIVE' || c.leadStatus === 'ACTIVE').length;
+    ['NEW_LEAD', 'CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED', 'NEGOTIATION'].includes(c.status)).length;
 
   const submitReassign = async (agentId: string) => {
     setReassignMsg('');
@@ -313,12 +383,16 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
     try {
       const { apiClient } = await import('../../shared/api/apiClient');
       const fd = new FormData();
+      fd.append('fullName', addForm.fullName.toUpperCase().trim());
       fd.append('phone', addForm.phone);
       fd.append('idNumber', addForm.idNumber);
+      fd.append('country', addForm.country);
+      fd.append('paymentType', addForm.paymentType);
+      fd.append('paymentAccount', addForm.paymentAccount);
       if (addForm.coverPhoto) fd.append('coverPhoto', addForm.coverPhoto);
       await apiClient.post('/api/v1/agents/create', fd);
       setAddOk(true); setAddMsg('Agent account created!');
-      setAddForm({ phone: '', idNumber: '', coverPhoto: null });
+      setAddForm({ fullName: '', phone: '', idNumber: '', country: '', paymentType: 'MPESA', paymentAccount: '', coverPhoto: null });
       refetch(['myAgents']);
     } catch (err: any) { setAddOk(false); setAddMsg(err?.response?.data?.error || 'Failed'); }
     finally { setAdding(false); }
@@ -332,6 +406,10 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
       activeSection={section}
       onSectionChange={setSection}
       onLogout={onLogout}
+      notifications={notifs}
+      onNotificationRead={async (id) => { try { const { apiClient } = await import('../../shared/api/apiClient'); await apiClient.patch(`/api/v1/notifications/${id}/read`); refetch(['notifications']); } catch { /* silent */ } }}
+      faqs={TRAINERS_FAQS}
+      portalName="Trainers Portal"
     >
       {section === 'overview' && (
         <div>
@@ -354,6 +432,9 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
               { key: 'country', label: 'Country' },
               { key: 'agentsCount', label: 'Agents', render: v => v ?? '—' },
               { key: 'performanceScore', label: 'Score', render: v => v ?? '—' },
+              { key: 'id', label: 'Actions', render: (_v, row: any) => (
+                <PortalButton size="sm" variant="secondary" onClick={() => alert(`Trainer: ${row.name}\nCountry: ${row.country || '—'}\nAgents: ${row.agentsCount ?? '—'}\nScore: ${row.performanceScore ?? '—'}`)}>View</PortalButton>
+              )},
             ]}
             rows={trainers}
             emptyMessage="No trainers found"
@@ -421,12 +502,56 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
             {addMsg && <div className={`p-3 rounded-xl text-sm mb-4 ${addOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{addMsg}</div>}
             <form onSubmit={submitAddAgent} className={cardCls} style={cardStyle}>
               <div className="mb-4">
+                <label className={labelCls}>Full Name *</label>
+                <input
+                  type="text" required
+                  value={addForm.fullName}
+                  onChange={e => setAddForm(f => ({ ...f, fullName: e.target.value.toUpperCase() }))}
+                  className={inputCls}
+                  placeholder="WANJIKU KAMAU"
+                  style={{ textTransform: 'uppercase' }}
+                />
+              </div>
+              <div className="mb-4">
                 <label className={labelCls}>Phone Number *</label>
                 <input type="tel" required value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+254…" />
               </div>
               <div className="mb-4">
                 <label className={labelCls}>ID Number *</label>
                 <input required value={addForm.idNumber} onChange={e => setAddForm(f => ({ ...f, idNumber: e.target.value }))} className={inputCls} />
+              </div>
+              <div className="mb-4">
+                <label className={labelCls}>Country *</label>
+                <CountryCombobox
+                  value={addForm.country}
+                  onChange={v => setAddForm(f => ({ ...f, country: v }))}
+                  inputCls={inputCls}
+                />
+              </div>
+              <div className="mb-4">
+                <label className={labelCls}>Payment Method *</label>
+                <select
+                  required
+                  value={addForm.paymentType}
+                  onChange={e => setAddForm(f => ({ ...f, paymentType: e.target.value, paymentAccount: '' }))}
+                  className={inputCls}
+                >
+                  <option value="MPESA">M-Pesa</option>
+                  <option value="BANK">Bank Account</option>
+                </select>
+              </div>
+              <div className="mb-6">
+                <label className={labelCls}>
+                  {addForm.paymentType === 'BANK' ? 'Bank Account Number *' : 'M-Pesa Number *'}
+                </label>
+                <input
+                  required
+                  type="text"
+                  value={addForm.paymentAccount}
+                  onChange={e => setAddForm(f => ({ ...f, paymentAccount: e.target.value }))}
+                  className={inputCls}
+                  placeholder={addForm.paymentType === 'BANK' ? 'e.g. 1234567890' : 'e.g. 0712345678'}
+                />
               </div>
               <div className="mb-6">
                 <label className={labelCls}>Cover Photo</label>
@@ -438,67 +563,123 @@ function HoTDashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
         </div>
       )}
 
-      {section === 'chat' && <div><SectionHeader title="Chat" /><ChatSection /></div>}
-      {section === 'notifications' && <div><SectionHeader title="Notifications" /><NotificationsSection notifs={notifs} /></div>}
+      {section === 'chat' && <div><SectionHeader title="Chat" /><ChatSection token={user?.token || ''} currentUserId={user?.id || ''} portal="Operations Portal" /></div>}
       {section === 'report' && <div><SectionHeader title="Daily Report" subtitle="Submit your daily report" /><DailyReportForm /></div>}
 
-      {/* Assign Converted Client — doc §4: HoT assigns converted client to specific Account Executive */}
-      {section === 'assign-client' && (() => {
-        const [assignForm, setAssignForm] = React.useState({ clientId: '', accountExecutiveId: '' });
-        const [assignMsg, setAssignMsg] = React.useState('');
-        const [assignOk, setAssignOk] = React.useState(false);
-        const convertedClients = (data.clients || []).filter((c: any) => c.status === 'CLOSED_WON' || c.status === 'CONVERTED');
-        const submitAssign = async (e: React.FormEvent) => {
-          e.preventDefault();
-          try {
-            const { apiClient } = await import('../../shared/api/apiClient');
-            await apiClient.post('/api/v1/clients/assign-to-account-executive', assignForm);
-            setAssignOk(true); setAssignMsg('Client assigned to Account Executive!');
-            setAssignForm({ clientId: '', accountExecutiveId: '' });
-            refetch(['clients']);
-          } catch (err: any) { setAssignOk(false); setAssignMsg(err?.response?.data?.error || 'Failed to assign client'); }
-        };
-        return (
-          <div>
-            <SectionHeader title="Assign Converted Client" subtitle="Assign a converted client to a specific Account Executive in Client Success department" />
-            {assignMsg && <div className={`p-3 rounded-xl text-sm mb-4 ${assignOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{assignMsg}</div>}
-            <form onSubmit={submitAssign} className={`${cardCls} max-w-lg`} style={cardStyle}>
-              <div className="mb-4">
-                <label className={labelCls}>Converted Client *</label>
-                <select required value={assignForm.clientId} onChange={e => setAssignForm(f => ({ ...f, clientId: e.target.value }))} className={inputCls}>
-                  <option value="">Select client…</option>
-                  {convertedClients.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                {convertedClients.length === 0 && <p className="text-xs text-gray-400 mt-1">No converted clients available yet</p>}
-              </div>
-              <div className="mb-6">
-                <label className={labelCls}>Account Executive ID *</label>
-                <input required value={assignForm.accountExecutiveId} onChange={e => setAssignForm(f => ({ ...f, accountExecutiveId: e.target.value }))} className={inputCls} placeholder="Enter Account Executive user ID" />
-              </div>
-              <PortalButton color={theme.hex} fullWidth>Assign Client</PortalButton>
-            </form>
-          </div>
-        );
-      })()}
+      {/* Assign Converted Client — doc §4: HoT assigns converted client to trainer for active engagement */}
+      {section === 'assign-client' && (
+        <div>
+          <SectionHeader title="Assign Converted Client" subtitle="Assign a converted client to a trainer — client moves to NEGOTIATION" />
+          {assignClientMsg && (
+            <div className={`p-3 rounded-xl text-sm mb-4 ${assignClientOk ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              {assignClientMsg}
+            </div>
+          )}
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            setAssignClientMsg('');
+            setAssignClientBusy(true);
+            try {
+              const { apiClient } = await import('../../shared/api/apiClient');
+              const res = await apiClient.post(
+                `/api/v1/agents/clients/${assignClientForm.clientId}/assign-account-exec`,
+                { trainerId: assignClientForm.accountExecutiveId }
+              );
+              setAssignClientOk(true);
+              setAssignClientMsg((res.data as any)?.message || 'Client assigned successfully!');
+              setAssignClientForm({ clientId: '', accountExecutiveId: '' });
+              refetch(['clients', 'trainers']);
+            } catch (err: any) {
+              setAssignClientOk(false);
+              setAssignClientMsg(err?.response?.data?.error || 'Failed to assign client');
+            } finally {
+              setAssignClientBusy(false);
+            }
+          }} className={`${cardCls} max-w-lg`} style={cardStyle}>
+
+            {/* Client selector */}
+            <div className="mb-4">
+              <label className={labelCls}>Converted Client *</label>
+              <select
+                required
+                value={assignClientForm.clientId}
+                onChange={e => setAssignClientForm(f => ({ ...f, clientId: e.target.value }))}
+                className={inputCls}
+              >
+                <option value="">Select client…</option>
+                {(data.clients || [])
+                  .filter((c: any) => ['CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED'].includes(c.status))
+                  .map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {c.status.replace(/_/g, ' ')}
+                      {c.serviceDescription ? ` — ${c.serviceDescription.slice(0, 35)}` : ''}
+                    </option>
+                  ))}
+              </select>
+              {(data.clients || []).filter((c: any) => ['CONVERTED', 'LEAD_ACTIVATED', 'LEAD_QUALIFIED'].includes(c.status)).length === 0 && (
+                <p className="text-xs text-gray-400 mt-1">
+                  No converted clients yet — clients appear here once they reach CONVERTED, LEAD ACTIVATED, or LEAD QUALIFIED status
+                </p>
+              )}
+            </div>
+
+            {/* Trainer selector — uses data.trainers already loaded */}
+            <div className="mb-6">
+              <label className={labelCls}>Assign to Trainer *</label>
+              <select
+                required
+                value={assignClientForm.accountExecutiveId}
+                onChange={e => setAssignClientForm(f => ({ ...f, accountExecutiveId: e.target.value }))}
+                className={inputCls}
+              >
+                <option value="">Select trainer…</option>
+                {(data.trainers || []).map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.fullName || t.full_name || t.name || t.email}
+                    {t.assignedClients != null ? ` (${t.assignedClients} clients)` : ''}
+                  </option>
+                ))}
+              </select>
+              {(data.trainers || []).length === 0 && (
+                <p className="text-xs text-gray-400 mt-1">No trainers found</p>
+              )}
+            </div>
+
+            <PortalButton
+              type="submit"
+              color={theme.hex}
+              fullWidth
+              disabled={assignClientBusy || !assignClientForm.clientId || !assignClientForm.accountExecutiveId}
+            >
+              {assignClientBusy ? 'Assigning…' : 'Assign Client'}
+            </PortalButton>
+          </form>
+        </div>
+      )}
     </PortalLayout>
   );
 }
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 export default function TrainersPortal() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const { data, refetch } = useMultiPortalData<{
     myAgents: any[]; clients: any[]; achievements: any[];
     trainers: any[]; notifications: any[]; metrics: any;
   }>([
+    // /api/v1/clients/all handles both roles: HoT gets all clients, TRAINER gets only their assigned clients
+    { key: 'clients', endpoint: '/api/v1/clients/all', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.clients ?? []) },
+    // /api/v1/trainer/agents returns agents for TRAINER; HoT uses training/agent-records
     { key: 'myAgents', endpoint: '/api/v1/training/agent-records', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.agents ?? []) },
-    { key: 'clients', endpoint: '/api/v1/clients', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.clients ?? []) },
-    { key: 'achievements', endpoint: '/api/v1/achievements', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.achievements ?? []) },
+    { key: 'achievements', endpoint: '/api/v1/trainer/country-achievements', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data?.trainers ?? r?.achievements ?? []) },
     { key: 'trainers', endpoint: '/api/v1/trainers/performance', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.trainers ?? []) },
-    { key: 'notifications', endpoint: '/api/v1/notifications', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.data ?? r?.notifications ?? []) },
-    { key: 'metrics', endpoint: '/api/v1/dashboard/metrics', fallback: {}, transform: (r: any) => r?.data ?? r ?? {} },
+    { key: 'notifications', endpoint: '/api/v1/notifications', fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r?.notifications ?? r?.data ?? []) },
+    { key: 'metrics', endpoint: '/api/v1/trainer/dashboard', fallback: {}, transform: (r: any) => r?.data ?? r ?? {} },
+  ], [
+    'data:client:created', 'data:client:updated', 'data:client:status_changed',
+    'data:lead:converted', 'data:notification:new', 'data:metrics:updated', 'data:report:submitted',
   ]);
 
   if (!user) {

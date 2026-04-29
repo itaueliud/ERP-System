@@ -3,11 +3,15 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { config } from '../config';
 import { db } from '../database/connection';
+import { redis } from '../cache/connection';
 import { sessionCache, SessionData } from '../cache/sessionCache';
 import { cacheService } from '../cache/cacheService';
 import { sendgridClient } from '../services/sendgrid/client';
 import { twoFactorService } from './twoFactorService';
 import logger from '../utils/logger';
+
+const LOGIN_MAX_ATTEMPTS = 10;
+const LOGIN_LOCKOUT_SECONDS = 15 * 60; // 15 minutes
 
 export interface LoginCredentials {
   email: string;
@@ -65,6 +69,22 @@ export class AuthenticationService {
    */
   async login(credentials: LoginCredentials): Promise<AuthResult> {
     try {
+      // ── Account lockout check (Redis-backed, per email) ──────────────────
+      // Read current count first — only increment on actual failed password attempt below.
+      const lockKey = `login:attempts:${credentials.email}`;
+      try {
+        const client = redis.getClient();
+        const currentAttempts = parseInt((await client.get(lockKey)) || '0', 10);
+        if (currentAttempts >= LOGIN_MAX_ATTEMPTS) {
+          const ttl = await client.ttl(lockKey);
+          logger.warn('Login lockout triggered', { email: credentials.email, attempts: currentAttempts });
+          return { success: false, error: `Account temporarily locked. Try again in ${Math.ceil(ttl / 60)} minutes.` };
+        }
+      } catch (redisErr) {
+        // Redis unavailable — log but allow login to proceed (fail open for availability)
+        logger.error('Login rate-limit Redis error', { redisErr });
+      }
+
       // Fetch user from database
       const userQuery = `
         SELECT u.id, u.email, u.password_hash, u.full_name, u.two_fa_enabled, u.two_fa_mandatory, u.is_active,
@@ -95,6 +115,12 @@ export class AuthenticationService {
       const passwordMatch = await bcrypt.compare(credentials.password, user.password_hash);
       if (!passwordMatch) {
         logger.warn('Login attempt with incorrect password', { email: credentials.email });
+        // Increment lockout counter only on actual password failure
+        try {
+          const client = redis.getClient();
+          const attempts = await client.incr(lockKey);
+          if (attempts === 1) await client.expire(lockKey, LOGIN_LOCKOUT_SECONDS);
+        } catch { /* non-fatal */ }
         return {
           success: false,
           error: 'Invalid email or password',
@@ -102,14 +128,13 @@ export class AuthenticationService {
       }
 
       // Check if 2FA is enabled OR mandatory for this role (doc §21: 2FA mandatory for CEO, CoS, CFO, EA)
-      // In development mode, skip 2FA enforcement so all roles can log in without setup
       const MANDATORY_2FA_ROLES = ['CEO', 'CoS', 'CFO', 'EA'];
       const isDev = process.env.NODE_ENV === 'development';
-      const requires2FA = !isDev && (user.two_fa_enabled || MANDATORY_2FA_ROLES.includes(user.role));
+      const requires2FA = user.two_fa_enabled || (!isDev && MANDATORY_2FA_ROLES.includes(user.role));
 
       if (requires2FA) {
-        // If 2FA is mandatory but not yet set up, force setup
-        if (MANDATORY_2FA_ROLES.includes(user.role) && !user.two_fa_enabled) {
+        // If 2FA is mandatory but not yet set up, force setup (production only)
+        if (!isDev && MANDATORY_2FA_ROLES.includes(user.role) && !user.two_fa_enabled) {
           logger.warn('Executive role login without 2FA — forcing 2FA setup', { email: credentials.email, role: user.role });
           return {
             success: false,
@@ -164,7 +189,26 @@ export class AuthenticationService {
       // Update last login timestamp
       await db.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
 
+      // doc §25: CEO login triggers immediate security alert to registered backup email
+      if (user.role === 'CEO') {
+        const backupEmailResult = await db.query(
+          `SELECT value FROM system_config WHERE key = 'ceo_backup_email' LIMIT 1`
+        );
+        const backupEmail: string | null = backupEmailResult.rows[0]?.value || null;
+        if (backupEmail) {
+          sendgridClient.sendEmail({
+            to: backupEmail,
+            subject: 'Security Alert: CEO Account Login',
+            html: `<p>A login to the CEO account (<strong>${user.email}</strong>) was detected at <strong>${new Date().toUTCString()}</strong>.</p><p>If this was not you, contact your system administrator immediately.</p>`,
+          }).catch((err: any) => logger.error('CEO login security alert email failed', { err }));
+        }
+        logger.warn('CEO login — security alert triggered', { userId: user.id, email: user.email });
+      }
+
       logger.info('User logged in successfully', { userId: user.id, email: user.email });
+
+      // Clear lockout counter on successful login
+      try { await redis.getClient().del(lockKey); } catch { /* non-fatal */ }
 
       return {
         success: true,
@@ -533,7 +577,7 @@ export class AuthenticationService {
     try {
       // Find user by email
       const userQuery = `
-        SELECT u.id, u.email, u.full_name, u.github_username,
+        SELECT u.id, u.email, u.full_name, u.github_username, u.is_active,
                r.name as role, r.permissions, u.department_id
         FROM users u
         JOIN roles r ON u.role_id = r.id
@@ -550,6 +594,12 @@ export class AuthenticationService {
       }
 
       const user = result.rows[0];
+
+      // Check if account is suspended
+      if (user.is_active === false) {
+        logger.warn('GitHub OAuth attempt on suspended account', { email: githubUser.email });
+        return { success: false, error: 'Your account has been suspended. Contact the system administrator.' };
+      }
 
       // Check if user is a developer (requirement 1.9)
       if (user.role !== 'DEVELOPER') {

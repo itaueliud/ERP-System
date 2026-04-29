@@ -1,5 +1,5 @@
 // External service integrations
-export * from './jenga';
+export * from './daraja';
 export * from './github';
 export * from './firebase';
 export * from './sendgrid';

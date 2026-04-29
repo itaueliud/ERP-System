@@ -8,7 +8,8 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "concurrently -n BACKEND,CEO,EXEC,CLVL,OPS,TECH,AGNT -c bgBlue.bold,cyan,blue,gray,green,indigo,orange \"npm run dev:backend\" \"npm run dev:ceo\" \"npm run dev:executive\" \"npm run dev:clevel\" \"npm run dev:operations\" \"npm run dev:technology\" \"npm run dev:agents\"",
+    "setup": "bash scripts/setup.sh",
+    "dev": "concurrently -n BACKEND,FRONTEND -c bgBlue.bold,cyan \"npm run dev:backend\" \"npm run dev --workspace=frontend\"",
     "dev:backend": "npm run dev --workspace=backend",
     "dev:ceo": "npm run dev:ceo --workspace=frontend",
     "dev:executive": "npm run dev:executive --workspace=frontend",
@@ -16,8 +17,11 @@
     "dev:operations": "npm run dev:operations --workspace=frontend",
     "dev:technology": "npm run dev:technology --workspace=frontend",
     "dev:agents": "npm run dev:agents --workspace=frontend",
-    "build": "npm run build --workspaces",
-    "test": "npm run test --workspaces",
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npx tsc --noEmit -p backend/tsconfig.json && npx tsc --noEmit -p frontend/tsconfig.json",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
@@ -38,13 +42,13 @@
     "npm": ">=9.0.0"
   },
   "dependencies": {
+    "@aws-sdk/core": "^3.974.1",
     "@redis/client": "^5.12.1",
     "async": "^3.2.6",
     "axios": "^1.15.1",
     "bull": "^4.16.5",
     "cron-parser": "^5.5.0",
     "luxon": "^3.7.2",
-    "puppeteer": "^24.42.0",
-    "setimmediate": "^1.0.5"
+    "puppeteer": "^24.42.0"
   }
 }

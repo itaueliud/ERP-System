@@ -1,11 +1,10 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import TechnologyPortal from './index';
 
 vi.mock('../../shared/components/auth/AuthContext', () => ({
   useAuth: () => ({
-    user: { name: 'Tech Lead', email: 'tech@tst.com', role: 'TECHNOLOGY_USER' },
+    user: { name: 'Tech Lead', email: 'tech@tst.com', role: 'TECH_STAFF' },
     logout: vi.fn(),
   }),
   getPortalForRole: () => '/technology',

@@ -10,8 +10,8 @@ import logger from '../utils/logger';
 
 export type RoomType = 'DIRECT' | 'GROUP' | 'DEPARTMENT' | 'PROJECT';
 
-/** Maximum file attachment size: 10 MB (Requirement 13.8) */
-export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+/** Maximum file attachment size: 5 MB (updated requirement) */
+export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
 /** Message retention period in days (Requirement 13.6) */
 export const MESSAGE_RETENTION_DAYS = 90;
@@ -22,7 +22,12 @@ export interface ChatMessage {
   senderId: string;
   content: string;
   fileId: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  fileUrl?: string | null;
   createdAt: Date;
+  readBy?: string[];
+  isDeletedForEveryone?: boolean;
 }
 
 export interface MessageFilters {
@@ -48,6 +53,8 @@ export interface ChatRoom {
   type: RoomType;
   metadata: Record<string, unknown> | null;
   createdAt: Date;
+  read_by?: string[];
+  is_deleted_for_everyone?: boolean;
 }
 
 export interface ChatRoomMember {
@@ -87,7 +94,7 @@ export class ChatService {
     // Add members
     if (memberIds.length > 0) {
       const values = memberIds
-        .map((_, i) => `($1, ${i + 2})`)
+        .map((_, i) => `($1, $${i + 2})`)
         .join(', ');
       await db.query(
         `INSERT INTO chat_room_members (room_id, user_id) VALUES ${values}`,
@@ -160,6 +167,8 @@ export class ChatService {
       type: row.type as RoomType,
       metadata: row.metadata,
       createdAt: row.created_at,
+      readBy: (row as any).read_by || [],
+      isDeletedForEveryone: (row as any).is_deleted_for_everyone || false,
     }));
   }
 
@@ -286,20 +295,26 @@ export class ChatService {
     roomId: string,
     senderId: string,
     content: string,
-    fileId?: string
+    fileId?: string,
+    fileName?: string,
+    mimeType?: string
   ): Promise<ChatMessage> {
+    await this.ensureCurrentMonthPartition();
+
     const result = await db.query<{
       id: string;
       room_id: string;
       sender_id: string;
       content: string;
       file_id: string | null;
+      file_name: string | null;
+      mime_type: string | null;
       created_at: Date;
     }>(
-      `INSERT INTO chat_messages (room_id, sender_id, content, file_id)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, room_id, sender_id, content, file_id, created_at`,
-      [roomId, senderId, content, fileId ?? null]
+      `INSERT INTO chat_messages (room_id, sender_id, content, file_id, file_name, mime_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, room_id, sender_id, content, file_id, file_name, mime_type, created_at`,
+      [roomId, senderId, content, fileId ?? null, fileName ?? null, mimeType ?? null]
     );
 
     const row = result.rows[0];
@@ -311,6 +326,9 @@ export class ChatService {
       senderId: row.sender_id,
       content: row.content,
       fileId: row.file_id,
+      fileName: row.file_name,
+      mimeType: row.mime_type,
+      fileUrl: row.file_id ? `/api/v1/chat/files/${row.file_id}` : null,
       createdAt: row.created_at,
     };
 
@@ -331,7 +349,7 @@ export class ChatService {
    * Requirement 13.7: Allow users to search chat history by keyword
    */
   async getMessages(roomId: string, filters?: MessageFilters): Promise<ChatMessage[]> {
-    const conditions: string[] = ['room_id = $1'];
+    const conditions: string[] = ['room_id = $1', 'is_deleted_for_everyone = FALSE'];
     const params: unknown[] = [roomId];
     let idx = 2;
 
@@ -355,9 +373,11 @@ export class ChatService {
       sender_id: string;
       content: string;
       file_id: string | null;
+      file_name: string | null;
+      mime_type: string | null;
       created_at: Date;
     }>(
-      `SELECT id, room_id, sender_id, content, file_id, created_at
+      `SELECT id, room_id, sender_id, content, file_id, file_name, mime_type, created_at, read_by, is_deleted_for_everyone
        FROM chat_messages
        WHERE ${conditions.join(' AND ')}
        ORDER BY created_at DESC
@@ -371,7 +391,12 @@ export class ChatService {
       senderId: row.sender_id,
       content: row.content,
       fileId: row.file_id,
+      fileName: (row as any).file_name ?? null,
+      mimeType: (row as any).mime_type ?? null,
+      fileUrl: row.file_id ? `/api/v1/chat/files/${row.file_id}` : null,
       createdAt: row.created_at,
+      readBy: (row as any).read_by || [],
+      isDeletedForEveryone: (row as any).is_deleted_for_everyone || false,
     }));
   }
 
@@ -463,9 +488,11 @@ export class ChatService {
       sender_id: string;
       content: string;
       file_id: string | null;
+      file_name: string | null;
+      mime_type: string | null;
       created_at: Date;
     }>(
-      `SELECT id, room_id, sender_id, content, file_id, created_at
+      `SELECT id, room_id, sender_id, content, file_id, file_name, mime_type, created_at, read_by, is_deleted_for_everyone
        FROM chat_messages
        WHERE ${conditions.join(' AND ')}
        ORDER BY created_at DESC
@@ -479,7 +506,12 @@ export class ChatService {
       senderId: row.sender_id,
       content: row.content,
       fileId: row.file_id,
+      fileName: (row as any).file_name ?? null,
+      mimeType: (row as any).mime_type ?? null,
+      fileUrl: row.file_id ? `/api/v1/chat/files/${row.file_id}` : null,
       createdAt: row.created_at,
+      readBy: (row as any).read_by || [],
+      isDeletedForEveryone: (row as any).is_deleted_for_everyone || false,
     }));
   }
 
@@ -611,7 +643,38 @@ export class ChatService {
       type: row.type as RoomType,
       metadata: row.metadata,
       createdAt: row.created_at,
+      readBy: (row as any).read_by || [],
+      isDeletedForEveryone: (row as any).is_deleted_for_everyone || false,
     }));
+  }
+  /**
+   * Ensures a partition exists for the current month.
+   * chat_messages is partitioned by month — missing partitions cause INSERT failures.
+   */
+  private async ensureCurrentMonthPartition(): Promise<void> {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const nextMonth = now.getMonth() === 11 ? 1 : now.getMonth() + 2;
+    const nextYear = now.getMonth() === 11 ? year + 1 : year;
+    const nextMonthStr = String(nextMonth).padStart(2, '0');
+
+    const partitionName = `chat_messages_${year}_${month}`;
+    const fromDate = `${year}-${month}-01`;
+    const toDate = `${nextYear}-${nextMonthStr}-01`;
+
+    try {
+      await db.query(
+        `CREATE TABLE IF NOT EXISTS ${partitionName}
+         PARTITION OF chat_messages
+         FOR VALUES FROM ('${fromDate}') TO ('${toDate}')`
+      );
+    } catch (err: any) {
+      // Partition may already exist or overlap — safe to ignore
+      if (!err.message?.includes('already exists') && !err.message?.includes('overlap')) {
+        logger.warn('Could not create chat partition', { partitionName, err: err.message });
+      }
+    }
   }
 }
 

@@ -630,9 +630,9 @@ router.post('/strategic-goals', async (req: Request, res: Response) => {
        VALUES ($1, $2, 'IN_PROGRESS', 0, NOW()) RETURNING id, title, description, status, progress`,
       [title, description || '']
     );
-    res.status(201).json({ success: true, data: r.rows[0] });
+    return res.status(201).json({ success: true, data: r.rows[0] });
   } catch (e: any) {
-    res.status(400).json({ success: false, error: e.message || 'Failed to create goal' });
+    return res.status(400).json({ success: false, error: e.message || 'Failed to create goal' });
   }
 });
 
@@ -645,10 +645,44 @@ router.post('/:id/assign-team', async (req: Request, res: Response) => {
     const { teamId } = req.body;
     if (!teamId) return res.status(400).json({ success: false, error: 'teamId is required' });
     const { db } = await import('../database/connection');
+
+    // Assign team to project
     await db.query(`UPDATE projects SET team_id = $1 WHERE id = $2`, [teamId, id]);
-    res.json({ success: true, message: 'Project assigned to team' });
+
+    // Get project + contract info for notification
+    const projResult = await db.query(
+      `SELECT p.reference_number, c.id AS contract_id, c.pdf_url
+       FROM projects p
+       LEFT JOIN contracts c ON c.project_id = p.id
+       WHERE p.id = $1
+       ORDER BY c.version DESC LIMIT 1`,
+      [id]
+    );
+    const proj = projResult.rows[0];
+
+    // Notify the team leader
+    const leaderResult = await db.query(
+      `SELECT u.id FROM users u WHERE u.team_id = $1 AND u.is_team_leader = TRUE LIMIT 1`,
+      [teamId]
+    );
+    if (leaderResult.rows.length > 0) {
+      const leaderId = leaderResult.rows[0].id;
+      await db.query(
+        `INSERT INTO notifications (user_id, type, title, message, data, created_at)
+         VALUES ($1, 'CONTRACT_GENERATED', $2, $3, $4, NOW())
+         ON CONFLICT DO NOTHING`,
+        [
+          leaderId,
+          'New Contract Assigned',
+          `Project ${proj?.reference_number || id} has been assigned to your team. Please download and sign the contract.`,
+          JSON.stringify({ projectId: id, contractId: proj?.contract_id, pdfUrl: proj?.pdf_url }),
+        ]
+      ).catch(() => { /* notifications table may differ — ignore */ });
+    }
+
+    return res.json({ success: true, message: 'Project assigned to team' });
   } catch (e: any) {
-    res.status(400).json({ success: false, error: e.message || 'Failed to assign project' });
+    return res.status(400).json({ success: false, error: e.message || 'Failed to assign project' });
   }
 });
 

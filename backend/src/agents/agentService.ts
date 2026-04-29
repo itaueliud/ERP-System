@@ -3,13 +3,13 @@
  * Handles the full Agent workflow per spec §7:
  *  - Client capture form (Step 1)
  *  - Product/service selection (Step 2)
- *  - Commitment payment via Jenga API STK Push (Step 3)
+ *  - Commitment payment via Daraja API STK Push (Step 3)
  *  - Lead status lifecycle management
  *  - Agent dashboard metrics (personal data only — enforced at API level)
  */
 import { db } from '../database/connection';
 import logger from '../utils/logger';
-import { jengaClient } from '../services/jenga';
+import { darajaClient } from '../services/daraja';
 
 // ── Payment plans (doc §7 Step 3) ──────────────────────────────────────────
 export enum PaymentPlan {
@@ -160,14 +160,13 @@ export class AgentService {
     return this._getClientForAgent(input.clientId);
   }
 
-  // ── Step 3: Commitment Payment via Jenga STK Push ─────────────────────────
+  // ── Step 3: Commitment Payment via Daraja STK Push ──────────────────────────
   async initiateCommitmentPayment(input: CommitmentPaymentInput) {
     const client = await this._getClientForAgent(input.clientId);
     if (client.status !== 'CONVERTED') {
       throw new Error('Commitment payment only allowed after service selection (CONVERTED status)');
     }
 
-    // Get current commitment amount for the plan (editable by EA/CFO/CoS/CEO)
     const amtResult = await db.query(
       `SELECT amount, currency FROM commitment_amounts WHERE payment_plan = $1`,
       [input.paymentPlan]
@@ -177,13 +176,12 @@ export class AgentService {
 
     const reference = `COMMIT-${input.clientId}-${Date.now()}`;
 
-    // Trigger Jenga API STK Push (doc §7: commitment payments via M-Pesa only)
-    const jengaResponse = await jengaClient.initiateMpesaPayment({
+    // Trigger Daraja STK Push (doc §7: commitment payments via M-Pesa only)
+    const darajaResponse = await darajaClient.initiateMpesaPayment({
       phoneNumber: input.mpesaPhone,
       amount: parseFloat(amount),
-      currency,
-      reference,
-      description: `TST Commitment Payment - ${input.paymentPlan}`,
+      accountReference: reference,
+      transactionDesc: `TST Commitment Payment - ${input.paymentPlan}`,
     });
 
     // Record payment
@@ -191,15 +189,14 @@ export class AgentService {
       `INSERT INTO payments (transaction_id, amount, currency, payment_method, status, client_id)
        VALUES ($1,$2,$3,'MPESA',$4,$5)`,
       [
-        jengaResponse.transactionId || jengaResponse.requestId,
+        darajaResponse.transactionId || darajaResponse.requestId,
         amount,
         currency,
-        jengaResponse.status === 'INITIATED' ? 'PENDING' : 'FAILED',
+        darajaResponse.status === 'INITIATED' ? 'PENDING' : 'FAILED',
         input.clientId,
       ]
     );
 
-    // Store payment plan on client
     await db.query(
       `UPDATE clients SET payment_plan = $1, commitment_amount = $2, updated_at = NOW() WHERE id = $3`,
       [input.paymentPlan, amount, input.clientId]
@@ -208,19 +205,19 @@ export class AgentService {
     logger.info('Commitment payment initiated', {
       clientId: input.clientId,
       plan: input.paymentPlan,
-      transactionId: jengaResponse.transactionId,
+      transactionId: darajaResponse.transactionId,
     });
 
     return {
-      transactionId: jengaResponse.transactionId || jengaResponse.requestId,
+      transactionId: darajaResponse.transactionId || darajaResponse.requestId,
       amount,
       currency,
       paymentPlan: input.paymentPlan,
-      status: jengaResponse.status,
+      status: darajaResponse.status,
     };
   }
 
-  // ── Called by Jenga webhook when commitment payment confirmed ─────────────
+  // ── Called by Daraja webhook when commitment payment confirmed ────────────
   async confirmCommitmentPayment(clientId: string, transactionId: string) {
     const client = await db.query(`SELECT * FROM clients WHERE id = $1`, [clientId]);
     if (client.rows.length === 0) throw new Error('Client not found');

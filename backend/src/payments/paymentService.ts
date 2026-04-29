@@ -1,6 +1,7 @@
 import { db } from '../database/connection';
 import logger from '../utils/logger';
-import { jengaClient } from '../services/jenga';
+import { darajaClient } from '../services/daraja';
+import { realtimeEvents } from '../realtime/realtimeEvents';
 
 export interface InitiatePaymentInput {
   amount: number;
@@ -9,6 +10,7 @@ export interface InitiatePaymentInput {
   description?: string;
   clientId?: string;
   projectId?: string;
+  propertyId?: string; // TST PlotConnect property payment
 }
 
 export interface MpesaPaymentInput extends InitiatePaymentInput {
@@ -85,14 +87,14 @@ export enum ApprovalStatus {
 
 /**
  * Payment Processing Service
- * Handles payment processing via Jenga API for multiple payment methods
+ * Handles payment processing via Daraja API (Safaricom M-Pesa) for multiple payment methods
  * Requirements: 5.1-5.12
  */
 export class PaymentProcessingService {
   /**
    * Initiate M-Pesa STK Push payment
    * Requirement 5.2: Support M-Pesa payments via STK Push
-   * Requirement 5.6: Send payment request to Jenga API
+   * Requirement 5.6: Send payment request to Daraja API
    */
   async initiateMpesaPayment(input: MpesaPaymentInput): Promise<Payment> {
     try {
@@ -102,35 +104,30 @@ export class PaymentProcessingService {
         reference: input.reference,
       });
 
-      // Validate input
-      if (input.amount <= 0) {
-        throw new Error('Payment amount must be greater than 0');
-      }
+      if (input.amount <= 0) throw new Error('Payment amount must be greater than 0');
+      if (!input.phoneNumber) throw new Error('Phone number is required for M-Pesa payment');
 
-      if (!input.phoneNumber) {
-        throw new Error('Phone number is required for M-Pesa payment');
-      }
-
-      // Call Jenga API
-      const jengaResponse = await jengaClient.initiateMpesaPayment({
+      // Call Daraja STK Push
+      const darajaResponse = await darajaClient.initiateMpesaPayment({
         phoneNumber: input.phoneNumber,
         amount: input.amount,
-        currency: input.currency,
-        reference: input.reference,
-        description: input.description,
+        accountReference: input.reference,
+        transactionDesc: input.description,
       });
 
-      // Record payment in database
       const payment = await this.recordPayment({
-        transactionId: jengaResponse.transactionId || jengaResponse.requestId,
+        transactionId: darajaResponse.transactionId || darajaResponse.requestId,
+        // For STK Push, transactionId IS the CheckoutRequestID used for webhook matching
+        checkoutRequestId: darajaResponse.transactionId || undefined,
         amount: input.amount,
         currency: input.currency,
         paymentMethod: PaymentMethod.MPESA,
-        status: jengaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
+        status: darajaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
         clientId: input.clientId,
         projectId: input.projectId,
-        errorCode: jengaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
-        errorMessage: jengaResponse.status === 'FAILED' ? jengaResponse.message : undefined,
+        propertyId: (input as any).propertyId,
+        errorCode: darajaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
+        errorMessage: darajaResponse.status === 'FAILED' ? darajaResponse.message : undefined,
       });
 
       logger.info('M-Pesa payment initiated successfully', {
@@ -149,7 +146,7 @@ export class PaymentProcessingService {
   /**
    * Initiate Airtel Money payment
    * Requirement 5.3: Support Airtel Money payments
-   * Requirement 5.6: Send payment request to Jenga API
+   * Requirement 5.6: Send payment request to Daraja API
    */
   async initiateAirtelPayment(input: AirtelPaymentInput): Promise<Payment> {
     try {
@@ -159,35 +156,26 @@ export class PaymentProcessingService {
         reference: input.reference,
       });
 
-      // Validate input
-      if (input.amount <= 0) {
-        throw new Error('Payment amount must be greater than 0');
-      }
+      if (input.amount <= 0) throw new Error('Payment amount must be greater than 0');
+      if (!input.phoneNumber) throw new Error('Phone number is required for Airtel Money payment');
 
-      if (!input.phoneNumber) {
-        throw new Error('Phone number is required for Airtel Money payment');
-      }
-
-      // Call Jenga API
-      const jengaResponse = await jengaClient.initiateAirtelPayment({
+      const darajaResponse = await darajaClient.initiateAirtelPayment({
         phoneNumber: input.phoneNumber,
         amount: input.amount,
-        currency: input.currency,
-        reference: input.reference,
-        description: input.description,
+        accountReference: input.reference,
+        transactionDesc: input.description,
       });
 
-      // Record payment in database
       const payment = await this.recordPayment({
-        transactionId: jengaResponse.transactionId || jengaResponse.requestId,
+        transactionId: darajaResponse.transactionId || darajaResponse.requestId,
         amount: input.amount,
         currency: input.currency,
         paymentMethod: PaymentMethod.AIRTEL_MONEY,
-        status: jengaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
+        status: darajaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
         clientId: input.clientId,
         projectId: input.projectId,
-        errorCode: jengaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
-        errorMessage: jengaResponse.status === 'FAILED' ? jengaResponse.message : undefined,
+        errorCode: darajaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
+        errorMessage: darajaResponse.status === 'FAILED' ? darajaResponse.message : undefined,
       });
 
       logger.info('Airtel Money payment initiated successfully', {
@@ -206,7 +194,7 @@ export class PaymentProcessingService {
   /**
    * Initiate bank transfer payment
    * Requirement 5.4: Support bank transfer payments
-   * Requirement 5.6: Send payment request to Jenga API
+   * Requirement 5.6: Send payment request to Daraja API (B2C)
    */
   async initiateBankTransfer(input: BankTransferInput): Promise<Payment> {
     try {
@@ -217,21 +205,11 @@ export class PaymentProcessingService {
         reference: input.reference,
       });
 
-      // Validate input
-      if (input.amount <= 0) {
-        throw new Error('Payment amount must be greater than 0');
-      }
+      if (input.amount <= 0) throw new Error('Payment amount must be greater than 0');
+      if (!input.accountNumber) throw new Error('Account number is required for bank transfer');
+      if (!input.bankCode) throw new Error('Bank code is required for bank transfer');
 
-      if (!input.accountNumber) {
-        throw new Error('Account number is required for bank transfer');
-      }
-
-      if (!input.bankCode) {
-        throw new Error('Bank code is required for bank transfer');
-      }
-
-      // Call Jenga API
-      const jengaResponse = await jengaClient.initiateBankTransfer(
+      const darajaResponse = await darajaClient.initiateBankTransfer(
         input.accountNumber,
         input.bankCode,
         input.amount,
@@ -239,17 +217,16 @@ export class PaymentProcessingService {
         input.reference
       );
 
-      // Record payment in database
       const payment = await this.recordPayment({
-        transactionId: jengaResponse.transactionId || jengaResponse.requestId,
+        transactionId: darajaResponse.transactionId || darajaResponse.requestId,
         amount: input.amount,
         currency: input.currency,
         paymentMethod: PaymentMethod.BANK_TRANSFER,
-        status: jengaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
+        status: darajaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
         clientId: input.clientId,
         projectId: input.projectId,
-        errorCode: jengaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
-        errorMessage: jengaResponse.status === 'FAILED' ? jengaResponse.message : undefined,
+        errorCode: darajaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
+        errorMessage: darajaResponse.status === 'FAILED' ? darajaResponse.message : undefined,
       });
 
       logger.info('Bank transfer initiated successfully', {
@@ -268,53 +245,43 @@ export class PaymentProcessingService {
   /**
    * Initiate card payment (Visa/Mastercard)
    * Requirement 5.5: Support Visa and Mastercard payments
-   * Requirement 5.6: Send payment request to Jenga API
+   * NOTE: Card data is never logged. Only non-sensitive metadata is recorded.
    */
   async initiateCardPayment(input: CardPaymentInput): Promise<Payment> {
+    // Destructure card fields out so they are never passed to the logger
+    const { cardNumber, expiryMonth, expiryYear, cvv, ...safeInput } = input;
+
     try {
       logger.info('Initiating card payment', {
-        cardholderName: input.cardholderName,
-        amount: input.amount,
-        reference: input.reference,
+        cardholderName: safeInput.cardholderName,
+        amount: safeInput.amount,
+        reference: safeInput.reference,
       });
 
-      // Validate input
-      if (input.amount <= 0) {
-        throw new Error('Payment amount must be greater than 0');
-      }
-
-      if (!input.cardNumber || !input.expiryMonth || !input.expiryYear || !input.cvv) {
+      if (safeInput.amount <= 0) throw new Error('Payment amount must be greater than 0');
+      if (!cardNumber || !expiryMonth || !expiryYear || !cvv) {
         throw new Error('Complete card details are required');
       }
 
-      // Determine card type (Visa or Mastercard)
-      const cardType = this.determineCardType(input.cardNumber);
+      const cardType = this.determineCardType(cardNumber);
 
-      // Call Jenga API
-      const jengaResponse = await jengaClient.initiateCardPayment(
-        {
-          cardNumber: input.cardNumber,
-          expiryMonth: input.expiryMonth,
-          expiryYear: input.expiryYear,
-          cvv: input.cvv,
-          cardholderName: input.cardholderName,
-        },
-        input.amount,
-        input.currency,
-        input.reference
+      const darajaResponse = await darajaClient.initiateCardPayment(
+        { cardNumber, expiryMonth, expiryYear, cvv, cardholderName: safeInput.cardholderName },
+        safeInput.amount,
+        safeInput.currency,
+        safeInput.reference
       );
 
-      // Record payment in database
       const payment = await this.recordPayment({
-        transactionId: jengaResponse.transactionId || jengaResponse.requestId,
-        amount: input.amount,
-        currency: input.currency,
+        transactionId: darajaResponse.transactionId || darajaResponse.requestId,
+        amount: safeInput.amount,
+        currency: safeInput.currency,
         paymentMethod: cardType,
-        status: jengaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
-        clientId: input.clientId,
-        projectId: input.projectId,
-        errorCode: jengaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
-        errorMessage: jengaResponse.status === 'FAILED' ? jengaResponse.message : undefined,
+        status: darajaResponse.status === 'INITIATED' ? PaymentStatus.PENDING : PaymentStatus.FAILED,
+        clientId: safeInput.clientId,
+        projectId: safeInput.projectId,
+        errorCode: darajaResponse.status === 'FAILED' ? 'INITIATION_FAILED' : undefined,
+        errorMessage: darajaResponse.status === 'FAILED' ? darajaResponse.message : undefined,
       });
 
       logger.info('Card payment initiated successfully', {
@@ -326,7 +293,12 @@ export class PaymentProcessingService {
 
       return payment;
     } catch (error) {
-      logger.error('Failed to initiate card payment', { error, input });
+      // Never log `input` — it contains raw card data
+      logger.error('Failed to initiate card payment', {
+        error,
+        amount: safeInput.amount,
+        reference: safeInput.reference,
+      });
       throw error;
     }
   }
@@ -343,26 +315,32 @@ export class PaymentProcessingService {
     status: PaymentStatus;
     clientId?: string;
     projectId?: string;
+    propertyId?: string;
     errorCode?: string;
     errorMessage?: string;
+    checkoutRequestId?: string;
   }): Promise<Payment> {
     try {
+      // checkout_request_id is the Daraja STK Push CheckoutRequestID (only for M-Pesa STK).
+      // For other payment methods it is NULL to avoid misleading lookups.
       const result = await db.query(
         `INSERT INTO payments (
-          transaction_id, amount, currency, payment_method, status,
-          client_id, project_id, error_code, error_message
+          transaction_id, checkout_request_id, amount, currency, payment_method, status,
+          client_id, project_id, property_id, error_code, error_message
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id, transaction_id, amount, currency, payment_method, status,
-                  client_id, project_id, error_code, error_message, created_at`,
+                  client_id, project_id, property_id, error_code, error_message, created_at`,
         [
           data.transactionId,
+          data.checkoutRequestId || null,
           data.amount,
           data.currency,
           data.paymentMethod,
           data.status,
           data.clientId || null,
           data.projectId || null,
+          data.propertyId || null,
           data.errorCode || null,
           data.errorMessage || null,
         ]
@@ -401,72 +379,151 @@ export class PaymentProcessingService {
   }
 
   /**
-   * Handle Jenga API webhook
+   * Handle Daraja API webhook
    * Requirement 5.11: Verify webhook signature
    * Requirement 5.12: Reject invalid webhook signatures and log security alert
    * Requirement 4.8: Update client status to LEAD when commitment payment is successful
    */
   async handleWebhook(signature: string, payload: any): Promise<void> {
     try {
-      logger.info('Received Jenga API webhook', { signature, payload });
+      logger.info('Received Daraja API webhook', {
+        hasBody: !!payload?.Body,
+        hasStkCallback: !!payload?.Body?.stkCallback,
+        hasResult: !!payload?.Body?.Result,
+      });
 
       // Verify webhook signature
-      const isValid = jengaClient.verifyWebhookSignature(signature, JSON.stringify(payload));
+      const isValid = darajaClient.verifyWebhookSignature(signature, JSON.stringify(payload));
 
       if (!isValid) {
         logger.error('Invalid webhook signature detected', { signature, payload });
         throw new Error('Invalid webhook signature');
       }
 
-      // Update payment status based on webhook payload
-      const { transactionId, status, errorCode, errorMessage } = payload;
+      // Handle Daraja STK Push callback format
+      let transactionId: string;
+      let status: string;
+      let errorCode: string | null = null;
+      let errorMessage: string | null = null;
 
-      const paymentStatus =
-        status === 'COMPLETED' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
+      if (payload.Body?.stkCallback) {
+        // STK Push callback
+        const cb = payload.Body.stkCallback;
+        transactionId = cb.CheckoutRequestID;
+        status = cb.ResultCode === 0 ? 'COMPLETED' : 'FAILED';
+        if (cb.ResultCode !== 0) {
+          errorCode = String(cb.ResultCode);
+          errorMessage = cb.ResultDesc;
+        }
+      } else if (payload.Body?.Result) {
+        // B2C result callback
+        const result = payload.Body.Result;
+        transactionId = result.ConversationID || result.TransactionID;
+        status = result.ResultCode === 0 ? 'COMPLETED' : 'FAILED';
+        if (result.ResultCode !== 0) {
+          errorCode = String(result.ResultCode);
+          errorMessage = result.ResultDesc;
+        }
+      } else {
+        // Legacy flat format (for backward compat / manual testing)
+        transactionId = payload.transactionId;
+        status = payload.status;
+        errorCode = payload.errorCode || null;
+        errorMessage = payload.errorMessage || null;
+      }
 
-      await db.query(
-        `UPDATE payments
-         SET status = $1, error_code = $2, error_message = $3
-         WHERE transaction_id = $4`,
-        [paymentStatus, errorCode || null, errorMessage || null, transactionId]
+      const paymentStatus = status === 'COMPLETED' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
+
+      // Idempotent update — only proceed with side-effects if the row was actually changed
+      const updateResult = await db.query(
+        `UPDATE payments SET status = $1, error_code = $2, error_message = $3
+         WHERE transaction_id = $4 AND status != $1
+         RETURNING id`,
+        [paymentStatus, errorCode, errorMessage, transactionId]
       );
 
-      logger.info('Payment status updated from webhook', {
-        transactionId,
-        status: paymentStatus,
-      });
+      logger.info('Payment status updated from Daraja webhook', { transactionId, status: paymentStatus });
 
-      // If payment is successful and linked to a client, convert client to LEAD
-      if (paymentStatus === PaymentStatus.COMPLETED) {
-        const paymentResult = await db.query(
-          'SELECT client_id FROM payments WHERE transaction_id = $1 AND client_id IS NOT NULL',
+      // Only trigger downstream effects if this is the first time we're marking it COMPLETED
+      if (paymentStatus !== PaymentStatus.COMPLETED || updateResult.rowCount === 0) {
+        return;
+      }
+
+      const paymentResult = await db.query(
+        `SELECT p.client_id, p.property_id, c.payment_plan
+         FROM payments p
+         LEFT JOIN clients c ON c.id = p.client_id
+         WHERE p.transaction_id = $1`,
+        [transactionId]
+      );
+
+      // Also try to resolve property via marketer_properties.checkout_request_id
+      // in case the payments row didn't have property_id set
+      let propertyId = paymentResult.rows[0]?.property_id || null;
+      if (!propertyId) {
+        const mpRow = await db.query(
+          `SELECT id FROM marketer_properties WHERE checkout_request_id = $1`,
           [transactionId]
         );
+        if (mpRow.rows.length) propertyId = mpRow.rows[0].id;
+      }
 
-        if (paymentResult.rows.length > 0) {
-          const clientId = paymentResult.rows[0].client_id;
+      if (paymentResult.rows.length > 0 || propertyId) {
+        const { client_id: clientId, payment_plan: paymentPlan } = paymentResult.rows[0] || {};
+        const resolvedPropertyId = propertyId;
 
-          // Import ClientService dynamically to avoid circular dependency
+        // Update marketer_properties payment status if this is a PlotConnect payment
+        if (resolvedPropertyId) {
+          await db.query(
+            `UPDATE marketer_properties
+             SET payment_status = 'PAID', payment_confirmed_at = NOW(), updated_at = NOW()
+             WHERE id = $1`,
+            [resolvedPropertyId]
+          ).catch(err => logger.error('Failed to update marketer_properties payment status', { err, resolvedPropertyId }));
+
+          // Auto-publish if already approved
+          await db.query(
+            `UPDATE marketer_properties
+             SET status = 'PUBLISHED', updated_at = NOW()
+             WHERE id = $1 AND status = 'APPROVED'`,
+            [resolvedPropertyId]
+          ).catch(() => {});
+
+          // Notify COO and CEO
+          await db.query(
+            `INSERT INTO notifications (user_id, title, message, type, created_at)
+             SELECT u.id,
+                    'PlotConnect Payment Confirmed',
+                    (SELECT 'Property "' || property_name || '" payment confirmed — now live.'
+                     FROM marketer_properties WHERE id = $1),
+                    'NEW_PLOTCONNECT_PROPERTY',
+                    NOW()
+             FROM users u
+             WHERE u.role IN ('COO','CEO')`,
+            [resolvedPropertyId]
+          ).catch(() => {});
+
+          logger.info('marketer_properties payment confirmed', { resolvedPropertyId, transactionId });
+        }
+
+        // Update client lead status if linked to a client
+        if (clientId) {
           const { clientService } = await import('../clients/clientService');
-
           try {
-            await clientService.convertToLead(clientId, transactionId);
-            logger.info('Client automatically converted to LEAD after successful payment', {
-              clientId,
-              transactionId,
-            });
+            if (paymentPlan === 'FULL') {
+              await clientService.activateLead(clientId, transactionId);
+              logger.info('Client LEAD_ACTIVATED after Full Payment', { clientId, transactionId });
+            } else {
+              await clientService.qualifyLead(clientId, transactionId);
+              logger.info('Client LEAD_QUALIFIED after 50/50 or Milestone payment', { clientId, transactionId, paymentPlan });
+            }
           } catch (error) {
-            logger.error('Failed to auto-convert client to LEAD', {
-              error,
-              clientId,
-              transactionId,
-            });
-            // Don't throw - webhook was processed successfully, conversion is a side effect
+            logger.error('Failed to update client status after payment', { error, clientId, transactionId, paymentPlan });
           }
         }
       }
     } catch (error) {
-      logger.error('Failed to handle webhook', { error, signature, payload });
+      logger.error('Failed to handle Daraja webhook', { error: (error as any)?.message });
       throw error;
     }
   }
@@ -524,31 +581,17 @@ export class PaymentProcessingService {
     try {
       const payment = await this.getPaymentStatus(transactionId);
 
-      if (!payment) {
-        throw new Error('Payment not found');
-      }
+      if (!payment) throw new Error('Payment not found');
+      if (payment.status !== PaymentStatus.FAILED) throw new Error('Only failed payments can be retried');
 
-      if (payment.status !== PaymentStatus.FAILED) {
-        throw new Error('Only failed payments can be retried');
-      }
+      // Query Daraja for latest status
+      const darajaStatus = await darajaClient.getPaymentStatus(transactionId);
 
-      // Get payment status from Jenga API
-      const jengaStatus = await jengaClient.getPaymentStatus(transactionId);
-
-      // Update payment status
-      const newStatus =
-        jengaStatus.status === 'COMPLETED' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
+      const newStatus = darajaStatus.status === 'COMPLETED' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
 
       await db.query(
-        `UPDATE payments
-         SET status = $1, error_code = $2, error_message = $3
-         WHERE transaction_id = $4`,
-        [
-          newStatus,
-          jengaStatus.errorCode || null,
-          jengaStatus.errorMessage || null,
-          transactionId,
-        ]
+        `UPDATE payments SET status = $1, error_code = $2, error_message = $3 WHERE transaction_id = $4`,
+        [newStatus, darajaStatus.errorCode || null, darajaStatus.errorMessage || null, transactionId]
       );
 
       logger.info('Payment retry completed', { transactionId, newStatus });
@@ -612,25 +655,21 @@ export class PaymentProcessingService {
     projectId: string,
     amount: number,
     purpose: string,
-    requesterId: string
+    requesterId: string,
+    paymentType: string = 'GENERAL'
   ): Promise<PaymentApproval> {
     try {
-      logger.info('Creating payment approval request', {
-        projectId,
-        amount,
-        purpose,
-        requesterId,
-      });
+      logger.info('Creating payment approval request', { projectId, amount, purpose, requesterId, paymentType });
 
       const result = await db.query(
         `INSERT INTO payment_approvals (
-          project_id, amount, purpose, requester_id, status
+          project_id, amount, purpose, requester_id, status, payment_type
         )
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, project_id, amount, purpose, requester_id, status,
                   approver_id, executor_id, approved_at, executed_at,
                   rejection_reason, created_at`,
-        [projectId, amount, purpose, requesterId, ApprovalStatus.PENDING_APPROVAL]
+        [projectId, amount, purpose, requesterId, ApprovalStatus.PENDING_APPROVAL, paymentType]
       );
 
       const approval = this.mapApprovalFromDb(result.rows[0]);
@@ -641,6 +680,7 @@ export class PaymentProcessingService {
         amount,
       });
 
+      realtimeEvents.publish('payment:created', { approvalId: approval.id, projectId, amount });
       return approval;
     } catch (error) {
       logger.error('Failed to create payment approval request', {
@@ -689,6 +729,7 @@ export class PaymentProcessingService {
         projectId: approval.projectId,
       });
 
+      realtimeEvents.publish('payment:approved', { approvalId, approverId });
       return approval;
     } catch (error) {
       logger.error('Failed to approve payment', { error, approvalId, approverId });
@@ -730,6 +771,7 @@ export class PaymentProcessingService {
         reason,
       });
 
+      realtimeEvents.publish('payment:rejected', { approvalId, approverId });
       return approval;
     } catch (error) {
       logger.error('Failed to reject payment', { error, approvalId, approverId, reason });
@@ -738,10 +780,9 @@ export class PaymentProcessingService {
   }
 
   /**
-   * Execute payment (EA only)
-   * Requirement 7.5: Route approved payments to EA for execution
-   * Requirement 7.6: Process payment via Jenga API
-   * Requirement 7.7: Prevent same user from approving and executing
+   * Execute payment — CFO, CoS, CEO only.
+   * CFO can approve AND execute the same payment (no separation of duties for CFO/CoS/CEO).
+   * Requirement 7.5, 7.6
    */
   async executePayment(
     approvalId: string,
@@ -758,7 +799,8 @@ export class PaymentProcessingService {
         cvv: string;
         cardholderName: string;
       };
-    }
+    },
+    executorRole?: string
   ): Promise<{ approval: PaymentApproval; payment: Payment }> {
     try {
       logger.info('Executing payment', { approvalId, executorId });
@@ -784,85 +826,76 @@ export class PaymentProcessingService {
         throw new Error('Payment approval is not in approved pending execution status');
       }
 
-      // Requirement 7.7: Prevent same user from approving and executing
-      if (approval.approverId === executorId) {
+      // CFO, CoS, CEO can approve AND execute the same payment.
+      // For all other roles, prevent the same user from doing both.
+      const canSelfExecute = ['CFO', 'CoS', 'CEO'].includes(executorRole || '');
+      if (!canSelfExecute && approval.approverId === executorId) {
         throw new Error('Same user cannot approve and execute a payment');
       }
 
-      // Get project details for currency
-      const projectResult = await db.query(
-        'SELECT currency FROM projects WHERE id = $1',
-        [approval.projectId]
-      );
-
-      if (projectResult.rows.length === 0) {
-        throw new Error('Project not found');
+      // Get project currency — fall back to KES if no project linked
+      let currency = 'KES';
+      if (approval.projectId) {
+        const projectResult = await db.query(
+          'SELECT currency FROM projects WHERE id = $1',
+          [approval.projectId]
+        );
+        if (projectResult.rows.length > 0) {
+          currency = projectResult.rows[0].currency || 'KES';
+        }
       }
-
-      const currency = projectResult.rows[0].currency;
-      const reference = `PAY-${approval.projectId}-${Date.now()}`;
+      const reference = `PAY-${approval.id}-${Date.now()}`;
 
       // Process payment based on method
+      // If gateway credentials aren't configured, record the execution without calling Daraja
       let payment: Payment;
-
-      switch (paymentDetails.paymentMethod) {
-        case 'MPESA':
-          if (!paymentDetails.phoneNumber) {
-            throw new Error('Phone number is required for M-Pesa payment');
-          }
-          payment = await this.initiateMpesaPayment({
-            phoneNumber: paymentDetails.phoneNumber,
-            amount: approval.amount,
-            currency,
-            reference,
-            description: approval.purpose,
-            projectId: approval.projectId,
-          });
-          break;
-
-        case 'AIRTEL_MONEY':
-          if (!paymentDetails.phoneNumber) {
-            throw new Error('Phone number is required for Airtel Money payment');
-          }
-          payment = await this.initiateAirtelPayment({
-            phoneNumber: paymentDetails.phoneNumber,
-            amount: approval.amount,
-            currency,
-            reference,
-            description: approval.purpose,
-            projectId: approval.projectId,
-          });
-          break;
-
-        case 'BANK_TRANSFER':
-          if (!paymentDetails.accountNumber || !paymentDetails.bankCode) {
-            throw new Error('Account number and bank code are required for bank transfer');
-          }
-          payment = await this.initiateBankTransfer({
-            accountNumber: paymentDetails.accountNumber,
-            bankCode: paymentDetails.bankCode,
-            amount: approval.amount,
-            currency,
-            reference,
-            projectId: approval.projectId,
-          });
-          break;
-
-        case 'CARD':
-          if (!paymentDetails.cardDetails) {
-            throw new Error('Card details are required for card payment');
-          }
-          payment = await this.initiateCardPayment({
-            ...paymentDetails.cardDetails,
-            amount: approval.amount,
-            currency,
-            reference,
-            projectId: approval.projectId,
-          });
-          break;
-
-        default:
-          throw new Error('Invalid payment method');
+      try {
+        switch (paymentDetails.paymentMethod) {
+          case 'MPESA':
+            if (!paymentDetails.phoneNumber) throw new Error('Phone number is required for M-Pesa payment');
+            payment = await this.initiateMpesaPayment({
+              phoneNumber: paymentDetails.phoneNumber,
+              amount: approval.amount, currency, reference,
+              description: approval.purpose,
+              projectId: approval.projectId,
+            });
+            break;
+          case 'AIRTEL_MONEY':
+            if (!paymentDetails.phoneNumber) throw new Error('Phone number is required for Airtel Money payment');
+            payment = await this.initiateAirtelPayment({
+              phoneNumber: paymentDetails.phoneNumber,
+              amount: approval.amount, currency, reference,
+              description: approval.purpose,
+              projectId: approval.projectId,
+            });
+            break;
+          case 'BANK_TRANSFER':
+            if (!paymentDetails.accountNumber || !paymentDetails.bankCode) throw new Error('Account number and bank code are required for bank transfer');
+            payment = await this.initiateBankTransfer({
+              accountNumber: paymentDetails.accountNumber,
+              bankCode: paymentDetails.bankCode,
+              amount: approval.amount, currency, reference,
+              projectId: approval.projectId,
+            });
+            break;
+          case 'CARD':
+            if (!paymentDetails.cardDetails) throw new Error('Card details are required for card payment');
+            payment = await this.initiateCardPayment({
+              ...paymentDetails.cardDetails,
+              amount: approval.amount, currency, reference,
+              projectId: approval.projectId,
+            });
+            break;
+          default:
+            throw new Error('Invalid payment method');
+        }
+      } catch (gatewayErr: any) {
+        // Gateway error — propagate so the caller knows execution failed.
+        // Never silently mark a payment as COMPLETED when the gateway has not confirmed it.
+        logger.error('Payment gateway error during execution', {
+          approvalId, reason: (gatewayErr as any).message,
+        });
+        throw gatewayErr;
       }
 
       // Update approval status
@@ -885,6 +918,7 @@ export class PaymentProcessingService {
         transactionId: payment.transactionId,
       });
 
+      realtimeEvents.publish('payment:executed', { approvalId, executorId, paymentId: payment.id });
       return { approval: updatedApproval, payment };
     } catch (error) {
       logger.error('Failed to execute payment', { error, approvalId, executorId });
@@ -924,16 +958,22 @@ export class PaymentProcessingService {
   async getPendingApprovals(): Promise<PaymentApproval[]> {
     try {
       const result = await db.query(
-        `SELECT id, project_id, amount, purpose, requester_id, status,
-                approver_id, executor_id, approved_at, executed_at,
-                rejection_reason, created_at
-         FROM payment_approvals
-         WHERE status = $1
-         ORDER BY created_at ASC`,
+        `SELECT pa.id, pa.project_id, pa.amount, pa.purpose, pa.requester_id, pa.status,
+                pa.approver_id, pa.executor_id, pa.approved_at, pa.executed_at,
+                pa.rejection_reason, pa.created_at,
+                u.full_name as requester_name, u.email as requester_email
+         FROM payment_approvals pa
+         LEFT JOIN users u ON u.id = pa.requester_id
+         WHERE pa.status = $1
+         ORDER BY pa.created_at ASC`,
         [ApprovalStatus.PENDING_APPROVAL]
       );
 
-      return result.rows.map((row) => this.mapApprovalFromDb(row));
+      return result.rows.map((row) => ({
+        ...this.mapApprovalFromDb(row),
+        requesterName: row.requester_name,
+        requesterEmail: row.requester_email,
+      } as any));
     } catch (error) {
       logger.error('Failed to get pending approvals', { error });
       throw error;

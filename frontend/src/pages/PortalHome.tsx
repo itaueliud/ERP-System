@@ -1,4 +1,3 @@
-import React from 'react';
 import { useNavigate } from '../shared/utils/router';
 import { PORTAL_THEMES } from '../shared/theme/portalThemes';
 import TSTLogo from '../shared/components/TSTLogo';
@@ -8,7 +7,7 @@ const PORTALS = [
   { id: 'executive',  path: '/gatewaydelta',  description: 'Financial oversight, payment approvals & compliance',     roles: ['CFO', 'CoS', 'EA'],                       icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> },
   { id: 'clevel',     path: '/gatewaysigma',  description: 'Department management, strategic planning & analytics',   roles: ['COO', 'CTO'],                             icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> },
   { id: 'operations', path: '/gatewaynexus',  description: 'Sales, client success, marketing, trainers & HoT',       roles: ['OPERATIONS_USER', 'HEAD_OF_TRAINERS', 'TRAINER'], icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg> },
-  { id: 'technology', path: '/gatewayvertex', description: 'Projects, GitHub integration & developer metrics',        roles: ['TECHNOLOGY_USER', 'DEVELOPER'],           icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg> },
+  { id: 'technology', path: '/gatewayvertex', description: 'Projects, GitHub integration & developer metrics',        roles: ['TECH_STAFF', 'DEVELOPER'],           icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg> },
   { id: 'agents',     path: '/gatewaypulse',  description: 'Client capture, lead tracking & personal performance',    roles: ['AGENT'],                                  icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
 ];
 
@@ -40,11 +39,11 @@ export default function PortalHome() {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-12">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         {/* Hero */}
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-white mb-3">Portal Directory</h2>
-          <p className="text-white/50 text-base">Select your portal — you'll be redirected to the correct dashboard based on your role</p>
+          <h2 className="text-2xl sm:text-4xl font-bold text-white mb-3">Portal Directory</h2>
+          <p className="text-white/50 text-sm sm:text-base">Select your portal — you'll be redirected to the correct dashboard based on your role</p>
         </div>
 
         {/* Portal cards */}
@@ -92,20 +91,20 @@ export default function PortalHome() {
 
         {/* Credentials table */}
         <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-white/10 flex items-center gap-2">
-            <svg className="w-5 h-5 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+          <div className="px-4 sm:px-6 py-4 border-b border-white/10 flex flex-wrap items-center gap-2">
+            <svg className="w-5 h-5 text-white/50 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
             <h3 className="text-white font-semibold">Default Login Credentials</h3>
-            <span className="ml-auto text-xs text-white/30">All accounts connect to the live PostgreSQL database</span>
+            <span className="ml-auto text-xs text-white/30 hidden sm:block">All accounts connect to the live PostgreSQL database</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[500px]">
               <thead>
                 <tr className="border-b border-white/10">
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide">Role</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide">Email</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide">Password</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide">Portal</th>
-                  <th className="px-6 py-3" />
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide">Role</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide">Email</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide hidden md:table-cell">Password</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide hidden lg:table-cell">Portal</th>
+                  <th className="px-4 sm:px-6 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -113,16 +112,16 @@ export default function PortalHome() {
                   const theme = PORTAL_THEMES[c.path.replace('/', '')];
                   return (
                     <tr key={c.email} className="hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-3">
+                      <td className="px-4 sm:px-6 py-3">
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                           style={{ backgroundColor: theme?.hex + '25', color: theme?.hex === '#334155' ? '#94a3b8' : theme?.hex }}>
                           {c.role}
                         </span>
                       </td>
-                      <td className="px-6 py-3 font-mono text-xs text-white/70">{c.email}</td>
-                      <td className="px-6 py-3 font-mono text-xs text-white/40">{c.password}</td>
-                      <td className="px-6 py-3 font-mono text-xs text-white/30">{c.path}</td>
-                      <td className="px-6 py-3 text-right">
+                      <td className="px-4 sm:px-6 py-3 font-mono text-xs text-white/70">{c.email}</td>
+                      <td className="px-4 sm:px-6 py-3 font-mono text-xs text-white/40 hidden md:table-cell">{c.password}</td>
+                      <td className="px-4 sm:px-6 py-3 font-mono text-xs text-white/30 hidden lg:table-cell">{c.path}</td>
+                      <td className="px-4 sm:px-6 py-3 text-right">
                         <button
                           onClick={() => navigate(c.path)}
                           className="text-xs px-3 py-1.5 rounded-lg text-white font-medium transition-all hover:opacity-90"

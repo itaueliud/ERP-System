@@ -25,7 +25,7 @@ export const ROLE_PORTAL_MAP: Record<string, string> = {
   SENIOR_ACCOUNT_MANAGER: '/gatewaynexus',
   MARKETING_USER:         '/gatewaynexus',
   MARKETING_OFFICER:      '/gatewaynexus',
-  TECHNOLOGY_USER:        '/gatewayvertex',
+  TECH_STAFF:        '/gatewayvertex',
   DEVELOPER:              '/gatewayvertex',
   AGENT:                  '/gatewaypulse',
 };

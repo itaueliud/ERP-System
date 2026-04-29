@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconSize } from './Icon';
+import { IconSize, IconProps } from './Icon';
 import {
   CheckIcon,
   XIcon,
@@ -19,12 +19,14 @@ export interface StatusIndicatorProps {
   dotOnly?: boolean;
 }
 
+type IconComponentProps = Omit<IconProps, 'children' | 'viewBox'>;
+
 interface StatusConfig {
   dotColor: string;
   textColor: string;
   iconColor: string;
   defaultLabel: string;
-  Icon: React.FC<{ size?: IconSize; className?: string; 'aria-hidden'?: boolean }>;
+  Icon: React.FC<IconComponentProps>;
 }
 
 const STATUS_CONFIG: Record<StatusType, StatusConfig> = {

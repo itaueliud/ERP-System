@@ -33,7 +33,7 @@ export function enforce2FA(req: Request, res: Response, next: NextFunction) {
  * Reads from system_config table.
  */
 export function requirePortalEnabled(portalName: string) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const { db } = await import('../database/connection');
       const key = `portal_${portalName.toLowerCase()}_enabled`;
@@ -60,7 +60,7 @@ export const PORTAL_ROLE_MAP: Record<string, string[]> = {
   delta:  [Role.CoS, Role.CFO, Role.EA],
   sigma:  [Role.COO, Role.CTO],
   nexus:  [Role.COO, 'OPERATIONS_USER', Role.HEAD_OF_TRAINERS, Role.TRAINER],
-  vertex: [Role.CTO, 'TECHNOLOGY_USER', 'DEVELOPER'],
+  vertex: [Role.CTO, 'TECH_STAFF', 'DEVELOPER'],
   pulse:  [Role.AGENT],
 };
 

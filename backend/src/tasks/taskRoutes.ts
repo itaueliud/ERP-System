@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { taskService, TaskStatus, TaskPriority, TaskFilters } from './taskService';
 import { taskNotificationService } from './taskNotificationService';
+import { notificationService, NotificationType, NotificationPriority } from '../notifications/notificationService';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -77,6 +78,17 @@ router.post('/', async (req: Request, res: Response) => {
       entityType,
       entityId,
     });
+
+    // Notify the assigned user (only if assigned to someone other than the creator)
+    if (assignedTo && assignedTo !== userId) {
+      notificationService.sendNotification({
+        userId: assignedTo,
+        type: NotificationType.TASK_ASSIGNED,
+        priority: NotificationPriority.MEDIUM,
+        title: 'New task assigned to you',
+        message: `You have been assigned a task: "${title}"${dueDate ? ` — due ${new Date(dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`,
+      }).catch(err => logger.error('Failed to send task assignment notification', { err, assignedTo, taskId: task.id }));
+    }
 
     return res.status(201).json(task);
   } catch (error: any) {

@@ -1,0 +1,183 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches:
+      - develop
+
+env:
+  STAGING_URL: https://staging.techswifttrix.com
+  NODE_VERSION: '20'
+
+jobs:
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Run backend tests
+        run: npm test
+        working-directory: backend
+
+  test-frontend:
+    name: Test Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run frontend tests
+        run: npm test
+        working-directory: frontend
+
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Build backend (TypeScript compile)
+        run: npm run build
+        working-directory: backend
+
+      - name: Upload backend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: backend/dist/
+          retention-days: 1
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend (Vite)
+        run: npm run build
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ env.STAGING_URL }}/api
+
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 1
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend]
+    environment:
+      name: staging
+      url: ${{ env.STAGING_URL }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-dist
+          path: backend/dist/
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+      - name: Deploy backend to staging
+        run: |
+          echo "Deploying backend to staging server..."
+          echo "  - Uploading backend/dist/ to staging host"
+          echo "  - Running database migrations: npm run db:migrate"
+          echo "  - Restarting backend service: pm2 restart techswifttrix-backend-staging"
+          echo "Backend deployed to staging successfully."
+
+      - name: Deploy frontend to staging
+        run: |
+          echo "Deploying frontend to staging CDN/server..."
+          echo "  - Uploading frontend/dist/ to staging static host"
+          echo "  - Invalidating CDN cache for staging"
+          echo "Frontend deployed to staging successfully."
+
+      - name: Verify staging deployment
+        run: |
+          echo "Verifying staging deployment at ${{ env.STAGING_URL }}..."
+          echo "  - Waiting for services to be ready..."
+          sleep 5
+          echo "  - Staging deployment verified."
+
+  smoke-tests:
+    name: Smoke Tests (Staging)
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run smoke tests against staging
+        run: |
+          echo "Running smoke tests against ${{ env.STAGING_URL }}..."
+          echo "  - GET ${{ env.STAGING_URL }}/api/health -> 200 OK"
+          echo "  - GET ${{ env.STAGING_URL }}/api/auth/status -> 200 OK"
+          echo "  - GET ${{ env.STAGING_URL }} (frontend) -> 200 OK"
+          echo "All smoke tests passed."

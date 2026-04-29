@@ -489,7 +489,7 @@ describe('AuthorizationService', () => {
         Role.TRAINER,
         Role.AGENT,
         Role.OPERATIONS_USER,
-        Role.TECHNOLOGY_USER,
+        Role.TECH_STAFF,
         Role.DEVELOPER,
       ];
 

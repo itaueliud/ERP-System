@@ -344,9 +344,9 @@ describe('DashboardService – role-specific dashboards', () => {
       expect(spy).toHaveBeenCalledWith('u1');
     });
 
-    it('dispatches TECHNOLOGY_USER to getTechnologyDashboard', async () => {
+    it('dispatches TECH_STAFF to getTechnologyDashboard', async () => {
       const spy = jest.spyOn(service, 'getTechnologyDashboard').mockResolvedValueOnce({} as any);
-      await service.getRoleDashboard('u1', 'TECHNOLOGY_USER');
+      await service.getRoleDashboard('u1', 'TECH_STAFF');
       expect(spy).toHaveBeenCalledWith('u1');
     });
 

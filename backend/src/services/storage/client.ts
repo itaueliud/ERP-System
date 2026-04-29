@@ -90,7 +90,7 @@ export class StorageClient {
             const response = await this.client.send(command);
             const url = this.getPublicUrl(options.key);
             logger.info('File uploaded successfully', { key: options.key, size: options.buffer.length });
-            return { key: options.key, url, size: options.buffer.length, etag: response.ETag || '' };
+            return { key: options.key, url, size: options.buffer.length, etag: (response as any).ETag || '' };
           } catch (error: any) {
             logger.error('Failed to upload file', { error, key: options.key });
             throw new Error(`Failed to upload file: ${error.message}`);
@@ -110,14 +110,14 @@ export class StorageClient {
         Key: key,
       });
 
-      const response = await this.client.send(command);
+      const response = await this.client.send(command) as any;
 
       if (!response.Body) {
         throw new Error('No file content received');
       }
 
       const chunks: Uint8Array[] = [];
-      for await (const chunk of response.Body as any) {
+      for await (const chunk of (response.Body as any)) {
         chunks.push(chunk);
       }
 
@@ -165,11 +165,11 @@ export class StorageClient {
 
       return {
         key,
-        size: response.ContentLength || 0,
-        contentType: response.ContentType || 'application/octet-stream',
-        lastModified: response.LastModified || new Date(),
-        etag: response.ETag || '',
-        metadata: response.Metadata,
+        size: (response as any).ContentLength || 0,
+        contentType: (response as any).ContentType || 'application/octet-stream',
+        lastModified: (response as any).LastModified || new Date(),
+        etag: (response as any).ETag || '',
+        metadata: (response as any).Metadata,
       };
     } catch (error: any) {
       logger.error('Failed to get file metadata', { error, key });
@@ -237,7 +237,7 @@ export class StorageClient {
 
       const response = await this.client.send(command);
 
-      const files: FileMetadata[] = (response.Contents || []).map((item) => ({
+      const files: FileMetadata[] = ((response as any).Contents || []).map((item: any) => ({
         key: item.Key || '',
         size: item.Size || 0,
         contentType: 'application/octet-stream',

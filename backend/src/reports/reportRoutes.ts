@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { dailyReportService, SubmitReportInput, UpdateReportInput, ListReportsFilters } from './reportService';
 import { reportReminderService } from './reportReminderService';
 import { reportAnalyticsService, ReportFilters } from './reportAnalyticsService';
+import { realtimeEvents } from '../realtime/realtimeEvents';
 import logger from '../utils/logger';
 
 const EXECUTIVE_ROLES = ['CEO', 'CoS', 'COO', 'CTO'];
@@ -34,6 +35,8 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     const report = await dailyReportService.submitReport(userId, input);
+
+    realtimeEvents.publish('report:submitted', { reportId: report.id, userId });
 
     return res.status(201).json(report);
   } catch (error: any) {
@@ -347,3 +350,34 @@ router.post('/check-reminders', async (req: Request, res: Response) => {
 });
 
 export default router;
+
+/**
+ * DELETE /api/v1/reports/:reportId
+ * CEO/CoS only — permanently delete a daily report.
+ */
+router.delete('/:reportId', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    if (!EXECUTIVE_ROLES.includes(user.role)) {
+      return res.status(403).json({ error: 'Only executives can delete reports' });
+    }
+
+    const { reportId } = req.params;
+    const { db } = await import('../database/connection');
+    const result = await db.query(
+      `DELETE FROM daily_reports WHERE id = $1 RETURNING id`,
+      [reportId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+
+    logger.info('Daily report deleted by executive', { reportId, deletedBy: user.id });
+    return res.json({ success: true, id: reportId });
+  } catch (error: any) {
+    logger.error('Error deleting daily report', { error });
+    return res.status(500).json({ error: 'Failed to delete report' });
+  }
+});

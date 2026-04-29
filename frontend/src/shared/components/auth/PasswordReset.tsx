@@ -1,4 +1,4 @@
-import React, { useState, FormEvent } from 'react';
+import { useState, FormEvent } from 'react';
 
 export interface PasswordResetProps {
   onSubmit: (email: string) => void | Promise<void>;

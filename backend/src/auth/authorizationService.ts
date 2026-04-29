@@ -13,7 +13,7 @@ export enum Role {
   TRAINER          = 'TRAINER',
   AGENT            = 'AGENT',
   OPERATIONS_USER  = 'OPERATIONS_USER',
-  TECHNOLOGY_USER  = 'TECHNOLOGY_USER',
+  TECH_STAFF  = 'TECH_STAFF',
   DEVELOPER        = 'DEVELOPER',
   CFO_ASSISTANT    = 'CFO_ASSISTANT',
 }
@@ -26,7 +26,7 @@ export const INVITE_PERMISSIONS: Partial<Record<Role, Role[]>> = {
   // CEO can add any C-level account (doc §5: Who Creates Who)
   [Role.CEO]: [Role.CoS, Role.CFO, Role.COO, Role.CTO, Role.EA],
   // CTO can add Trainers, Head of Trainers, and CTO department members (doc §5)
-  [Role.CTO]: [Role.HEAD_OF_TRAINERS, Role.TRAINER, Role.TECHNOLOGY_USER, Role.DEVELOPER],
+  [Role.CTO]: [Role.HEAD_OF_TRAINERS, Role.TRAINER, Role.TECH_STAFF, Role.DEVELOPER],
   // Head of Trainers can add Agents directly (doc §5)
   [Role.HEAD_OF_TRAINERS]: [Role.AGENT],
   // CFO can add CFO Assistants (max 3) (doc §5)
@@ -87,28 +87,35 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'view:audit_logs',
     'manage:departments',
     'edit:service_amounts',
+    'approve:payments',
+    'reject:payments',
+    'execute:payments',
     'review:payments',
     'request:payments',
     'chat:cfo',
   ],
 
   [Role.CFO]: [
-    // Chief Financial Officer — financial operations
+    // Chief Financial Officer — approve AND execute payments
+    // Responsible for paying agents (Fridays), staff support (Mondays), salaries (2nd)
     'read:payments',
     'read:payment_approvals',
     'read:projects',
     'read:clients',
     'read:contracts',
+    'read:all_agents',              // CFO sees all agents data for commission payments
     'write:payment_approvals',
     'approve:payments',
     'reject:payments',
+    'execute:payments',
     'access:financial_data',
     'access:executive_portal',
     'view:financial_totals',
     'view:profit_loss',
     'view:all_payments',
     'view:financial_reports',
-    'invite:cfo_assistant',           // Add CFO Assistants
+    'view:agent_commissions',       // Full agent commission visibility
+    'invite:cfo_assistant',
     'edit:service_amounts',
     'review:payments',
     'request:payments',
@@ -134,7 +141,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
   ],
 
   [Role.CTO]: [
-    // Chief Technology Officer — technology management
+    // Chief Technology Officer — technology management + developer payment approval
     'read:projects',
     'read:github_repositories',
     'read:users',
@@ -149,28 +156,30 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'view:github_activity',
     'manage:technology_departments',
     'view:cross_country_achievements',
-    'invite:trainers_cto_members',    // Add Trainers / CTO members
+    'invite:trainers_cto_members',
     'link:github',
     'assign:projects_to_dev_teams',
+    'approve:developer_payments',     // CTO can approve developer team payments
+    'manage:developer_teams',         // CTO creates/manages dev teams
+    'chat:developers',                // CTO ↔ developers
     'chat:cfo',
   ],
 
   [Role.EA]: [
-    // Executive Assistant — execution tasks (doc §13: Financial Visibility — EA has revenue totals ✔ but P&L ✖)
+    // Executive Assistant — contracts, regions, support tasks
+    // EA approves developer payments but does NOT execute any payments
     'read:payments',
     'read:payment_approvals',
     'read:projects',
     'read:clients',
     'read:contracts',
-    'execute:payments',
     'access:financial_data',
     'access:executive_portal',
-    'view:financial_totals',          // Revenue totals ✔ (doc §13)
-    // NOTE: view:profit_loss intentionally excluded — EA has ✖ for P&L (doc §13)
+    'view:financial_totals',
     'view:approved_payments',
     'edit:service_amounts',
     'review:payments',
-    'request:payments',
+    'approve:developer_payments',     // EA can approve developer team payments
     'add:regions_countries',
     'draft:contracts',
     'download:developer_contracts',
@@ -238,7 +247,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'submit:daily_reports',
   ],
 
-  [Role.TECHNOLOGY_USER]: [
+  [Role.TECH_STAFF]: [
     // Technology User — CTO departments
     'read:projects',
     'read:github_repositories',
@@ -251,7 +260,8 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
   ],
 
   [Role.DEVELOPER]: [
-    // Developer — requires GitHub OAuth
+    // Developer — requires GitHub OAuth, belongs to a team of 3
+    // Can only chat with CTO (not with other roles)
     'read:projects',
     'read:github_repositories',
     'read:tasks',
@@ -261,6 +271,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'view:project_timeline',
     'link:github_repositories',
     'submit:daily_reports',
+    'chat:cto',                   // Developers can ONLY chat with CTO
   ],
 
   [Role.CFO_ASSISTANT]: [

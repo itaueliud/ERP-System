@@ -93,7 +93,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [CEO, CoS, CFO, COO, CTO, EA, HeadOfTrainers, Trainer, Agent, OperationsUser, TechnologyUser, Developer]
+            enum: [CEO, CoS, CFO, COO, CTO, EA, HeadOfTrainers, Trainer, Agent, OperationsUser, TechStaff, Developer]
           description: Filter by role
       responses:
         '200':
@@ -489,7 +489,7 @@ components:
           type: string
         role:
           type: string
-          enum: [CEO, CoS, CFO, COO, CTO, EA, HeadOfTrainers, Trainer, Agent, OperationsUser, TechnologyUser, Developer]
+          enum: [CEO, CoS, CFO, COO, CTO, EA, HeadOfTrainers, Trainer, Agent, OperationsUser, TechStaff, Developer]
 
     UserListResponse:
       type: object
@@ -511,7 +511,7 @@ components:
           format: email
         role:
           type: string
-          enum: [CEO, CoS, CFO, COO, CTO, EA, HeadOfTrainers, Trainer, Agent, OperationsUser, TechnologyUser, Developer]
+          enum: [CEO, CoS, CFO, COO, CTO, EA, HeadOfTrainers, Trainer, Agent, OperationsUser, TechStaff, Developer]
         firstName:
           type: string
         lastName:

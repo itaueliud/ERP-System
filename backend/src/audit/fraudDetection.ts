@@ -70,6 +70,9 @@ const UNAUTHORIZED_ATTEMPT_THRESHOLD = 3;
 const UNAUTHORIZED_ATTEMPT_WINDOW_MINUTES = 10;
 const SERVICE_AMOUNT_CHANGE_THRESHOLD_PCT = 0.2; // 20%
 
+// Sensitive resource types for financial access checks
+const FINANCIAL_RESOURCE_TYPES = new Set(['financial_data', 'payments', 'audit_logs']);
+
 // ============================================================================
 // FraudDetectionService
 // ============================================================================
@@ -114,15 +117,14 @@ export class FraudDetectionService {
   /**
    * Detect access to a resource outside normal working hours (9 AM – 6 PM).
    * Requirement 36.3: Flag financial data access outside normal working hours.
+   *
+   * NOTE: Uses server UTC time. Per-user timezone support can be added by
+   * passing the user's UTC offset and adjusting `hour` accordingly.
    */
-  checkUnusualAccess(_userId: string, resourceType: string): boolean {
-    const hour = new Date().getHours();
+  checkUnusualAccess(resourceType: string): boolean {
+    const hour = new Date().getUTCHours();
     const isOutsideHours = hour < WORK_HOUR_START || hour >= WORK_HOUR_END;
-    const isSensitiveResource =
-      resourceType === 'financial_data' ||
-      resourceType === 'payments' ||
-      resourceType === 'audit_logs';
-    return isOutsideHours && isSensitiveResource;
+    return isOutsideHours && FINANCIAL_RESOURCE_TYPES.has(resourceType);
   }
 
   /**
@@ -170,16 +172,22 @@ export class FraudDetectionService {
    * Analyze a single audit log entry for suspicious patterns.
    * Generates security alerts for any detected patterns.
    * Requirement 36.6: Create a security alert if a suspicious pattern is detected.
+   *
+   * Each check is mutually exclusive to avoid duplicate alerts for the same event:
+   *  - Failed LOGIN → check for brute-force
+   *  - Successful access to financial resource → SUSPICIOUS_FINANCIAL_ACCESS
+   *  - Successful VIEW of non-financial resource outside hours → UNUSUAL_ACCESS_HOURS
+   *  - Failed non-LOGIN action → check for repeated unauthorized attempts
    */
   async analyzeAuditLog(logEntry: AuditLog): Promise<SecurityAlert[]> {
     const alerts: SecurityAlert[] = [];
 
     try {
-      // Check for multiple failed logins
       if (logEntry.action === 'LOGIN' && logEntry.result === AuditResult.FAILURE) {
+        // Brute-force login detection
         const suspicious = await this.checkFailedLogins(logEntry.userId);
         if (suspicious) {
-          const alert = await this.generateSecurityAlert(
+          alerts.push(await this.generateSecurityAlert(
             SecurityAlertType.MULTIPLE_FAILED_LOGINS,
             {
               userId: logEntry.userId,
@@ -188,40 +196,27 @@ export class FraudDetectionService {
               threshold: FAILED_LOGIN_THRESHOLD,
             },
             logEntry.userId
-          );
-          alerts.push(alert);
+          ));
         }
-      }
-
-      // Check for unusual financial data access
-      if (
-        logEntry.result === AuditResult.SUCCESS &&
-        this.checkUnusualAccess(logEntry.userId, logEntry.resourceType)
-      ) {
-        const alert = await this.generateSecurityAlert(
-          SecurityAlertType.SUSPICIOUS_FINANCIAL_ACCESS,
-          {
-            userId: logEntry.userId,
-            resourceType: logEntry.resourceType,
-            resourceId: logEntry.resourceId,
-            accessTime: new Date().toISOString(),
-          },
-          logEntry.userId
-        );
-        alerts.push(alert);
-      }
-
-      // Check for unusual access hours (non-financial sensitive resources)
-      if (
-        logEntry.result === AuditResult.SUCCESS &&
-        logEntry.resourceType !== 'financial_data' &&
-        logEntry.resourceType !== 'payments' &&
-        logEntry.resourceType !== 'audit_logs'
-      ) {
-        const hour = new Date().getHours();
-        const isOutsideHours = hour < WORK_HOUR_START || hour >= WORK_HOUR_END;
-        if (isOutsideHours && logEntry.action === 'VIEW') {
-          const alert = await this.generateSecurityAlert(
+      } else if (logEntry.result === AuditResult.SUCCESS && FINANCIAL_RESOURCE_TYPES.has(logEntry.resourceType)) {
+        // Successful access to a financial resource outside working hours
+        if (this.checkUnusualAccess(logEntry.resourceType)) {
+          alerts.push(await this.generateSecurityAlert(
+            SecurityAlertType.SUSPICIOUS_FINANCIAL_ACCESS,
+            {
+              userId: logEntry.userId,
+              resourceType: logEntry.resourceType,
+              resourceId: logEntry.resourceId,
+              accessTime: new Date().toISOString(),
+            },
+            logEntry.userId
+          ));
+        }
+      } else if (logEntry.result === AuditResult.SUCCESS && logEntry.action === 'VIEW' && !FINANCIAL_RESOURCE_TYPES.has(logEntry.resourceType)) {
+        // Successful VIEW of a non-financial resource outside working hours
+        const hour = new Date().getUTCHours();
+        if (hour < WORK_HOUR_START || hour >= WORK_HOUR_END) {
+          alerts.push(await this.generateSecurityAlert(
             SecurityAlertType.UNUSUAL_ACCESS_HOURS,
             {
               userId: logEntry.userId,
@@ -230,16 +225,13 @@ export class FraudDetectionService {
               accessTime: new Date().toISOString(),
             },
             logEntry.userId
-          );
-          alerts.push(alert);
+          ));
         }
-      }
-
-      // Check for repeated unauthorized attempts
-      if (logEntry.result === AuditResult.FAILURE && logEntry.action !== 'LOGIN') {
+      } else if (logEntry.result === AuditResult.FAILURE && logEntry.action !== 'LOGIN') {
+        // Repeated unauthorized access attempts
         const suspicious = await this.checkUnauthorizedAttempts(logEntry.userId);
         if (suspicious) {
-          const alert = await this.generateSecurityAlert(
+          alerts.push(await this.generateSecurityAlert(
             SecurityAlertType.UNAUTHORIZED_ATTEMPTS,
             {
               userId: logEntry.userId,
@@ -249,8 +241,7 @@ export class FraudDetectionService {
               threshold: UNAUTHORIZED_ATTEMPT_THRESHOLD,
             },
             logEntry.userId
-          );
-          alerts.push(alert);
+          ));
         }
       }
     } catch (error) {
@@ -339,13 +330,15 @@ export class FraudDetectionService {
 
       const limit = filters.limit ?? 50;
       const offset = filters.offset ?? 0;
+      const limitIdx = idx++;
+      const offsetIdx = idx++;
 
       const dataResult = await db.query(
         `SELECT id, type, severity, status, details, affected_user_id, resolved_by, resolved_at, created_at
          FROM security_alerts
          ${where}
          ORDER BY created_at DESC
-         LIMIT $${idx++} OFFSET $${idx++}`,
+         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
         [...values, limit, offset]
       );
 
@@ -394,18 +387,21 @@ export class FraudDetectionService {
       );
 
       const title = `Security Alert: ${alert.type.replace(/_/g, ' ')}`;
-      const message = `A ${alert.severity} severity security alert has been detected. Details: ${JSON.stringify(alert.details)}`;
+      const message = `A ${alert.severity} severity security alert has been detected. Type: ${alert.type}`;
 
-      for (const row of executives.rows) {
-        await notificationService.sendNotification({
-          userId: row.id,
-          type: NotificationType.PAYMENT_APPROVAL, // reuse closest available type
-          priority: NotificationPriority.HIGH,
-          title,
-          message,
-          data: { alertId: alert.id, alertType: alert.type },
-        });
-      }
+      // Send all notifications in parallel — avoid sequential await in loop
+      await Promise.allSettled(
+        executives.rows.map((row) =>
+          notificationService.sendNotification({
+            userId: row.id,
+            type: NotificationType.SECURITY_ALERT,
+            priority: NotificationPriority.HIGH,
+            title,
+            message,
+            data: { alertId: alert.id, alertType: alert.type },
+          })
+        )
+      );
     } catch (error) {
       // Non-fatal — alert is already persisted
       logger.error('FraudDetection.routeAlertToExecutives error', { error, alertId: alert.id });

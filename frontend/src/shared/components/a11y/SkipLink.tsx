@@ -1,4 +1,3 @@
-import React from 'react';
 
 export interface SkipLinkProps {
   /** The id of the main content element to skip to. Default: 'main-content' */

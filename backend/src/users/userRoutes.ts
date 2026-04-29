@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { userService } from './userService';
+import { userService, PAYABLE_ROLES } from './userService';
 import { requireRole } from '../auth/authorizationMiddleware';
 import { Role, INVITE_PERMISSIONS } from '../auth/authorizationService';
+import { db } from '../database/connection';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -14,7 +15,7 @@ const router = Router();
  *
  * Who can invite whom (Permissions Matrix):
  *   CEO              → CoS, CFO, COO, CTO, EA  (C-level accounts)
- *   CTO              → HEAD_OF_TRAINERS, TECHNOLOGY_USER, DEVELOPER
+ *   CTO              → HEAD_OF_TRAINERS, TECH_STAFF, DEVELOPER
  *   HEAD_OF_TRAINERS → AGENT, TRAINER
  *   CFO              → CFO_ASSISTANT
  */
@@ -23,7 +24,7 @@ router.post(
   requireRole(Role.CEO, Role.CTO, Role.HEAD_OF_TRAINERS, Role.CFO),
   async (req: Request, res: Response) => {
   try {
-    const { email, roleId, departmentId } = req.body;
+    const { email, roleId, departmentId, payoutMethod, payoutPhone, payoutBankName, payoutBankAccount } = req.body;
 
     if (!email || !roleId) {
       return res.status(400).json({ success: false, error: 'Email and roleId are required' });
@@ -58,6 +59,10 @@ router.post(
       roleId,
       departmentId,
       invitedBy: inviter.id,
+      payoutMethod: payoutMethod || undefined,
+      payoutPhone: payoutPhone || undefined,
+      payoutBankName: payoutBankName || undefined,
+      payoutBankAccount: payoutBankAccount || undefined,
     });
 
     return res.status(201).json({
@@ -88,11 +93,24 @@ router.get('/invite/validate/:token', async (req: Request, res: Response) => {
       });
     }
 
+    // Resolve role name so the frontend can conditionally show payout fields
+    const { db } = await import('../database/connection');
+    const roleResult = await db.query('SELECT name FROM roles WHERE id = $1', [invitation.roleId]);
+    const roleName: string = roleResult.rows[0]?.name || '';
+    const { PAYABLE_ROLES } = await import('./userService');
+    const requiresPayout = PAYABLE_ROLES.includes(roleName as any);
+
     return res.json({
       success: true,
       data: {
         email: invitation.email,
         expiresAt: invitation.expiresAt,
+        role: roleName,
+        requiresPayout,
+        payoutMethod: invitation.payoutMethod || null,
+        payoutPhone: invitation.payoutPhone || null,
+        payoutBankName: invitation.payoutBankName || null,
+        payoutBankAccount: invitation.payoutBankAccount || null,
       },
     });
   } catch (error: any) {
@@ -112,24 +130,24 @@ router.get('/invite/validate/:token', async (req: Request, res: Response) => {
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { token, email, password, fullName, phone, country, languagePreference, timezone } =
-      req.body;
+    const {
+      token, email, password, fullName, phone, country,
+      languagePreference, timezone,
+      payoutMethod, payoutPhone, payoutBankName, payoutBankAccount,
+    } = req.body;
 
-    // Validate required fields
-    if (!token || !email || !password || !fullName || !phone || !country) {
+    if (!token || !email || !password || !fullName) {
       return res.status(400).json({
         success: false,
-        error: 'All required fields must be provided',
+        error: 'token, email, password and fullName are required',
       });
     }
 
-    // Validate password complexity (Requirement 39.11)
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/;
     if (!passwordRegex.test(password)) {
       return res.status(400).json({
         success: false,
-        error:
-          'Password must be at least 12 characters and contain uppercase, lowercase, number, and special character',
+        error: 'Password must be at least 12 characters and contain uppercase, lowercase, number, and special character',
       });
     }
 
@@ -137,11 +155,15 @@ router.post('/register', async (req: Request, res: Response) => {
       email,
       password,
       fullName,
-      phone,
-      country,
-      roleId: '', // Will be set from invitation
+      phone: phone || '',
+      country: country || '',
+      roleId: '',
       languagePreference,
       timezone,
+      payoutMethod,
+      payoutPhone,
+      payoutBankName,
+      payoutBankAccount,
     });
 
     return res.status(201).json({
@@ -291,31 +313,27 @@ router.post('/me/password', async (req: Request, res: Response) => {
 });
 
 /**
- * Get user by ID
- * GET /api/v1/users/:id
+ * Get all departments
+ * GET /api/v1/users/departments
+ * Must be defined BEFORE /:id to avoid the wildcard swallowing it.
  */
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/departments', async (_req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const result = await db.query(
+      `SELECT id, name, type, parent_id as "parentId"
+       FROM departments
+       ORDER BY name`
+    );
 
-    const user = await userService.getUserById(id);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found',
-      });
-    }
-
-    return res.json({
+    res.json({
       success: true,
-      data: user,
+      data: result.rows,
     });
   } catch (error: any) {
-    logger.error('Failed to get user', { error });
-    return res.status(500).json({
+    logger.error('Failed to get departments', { error });
+    res.status(500).json({
       success: false,
-      error: 'Failed to get user',
+      error: 'Failed to get departments',
     });
   }
 });
@@ -323,8 +341,9 @@ router.get('/:id', async (req: Request, res: Response) => {
 /**
  * List users with pagination and filtering
  * GET /api/v1/users
+ * Restricted to admin/management roles.
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', requireRole(Role.CEO, Role.CoS, Role.CFO, Role.COO, Role.CTO, Role.EA, Role.HEAD_OF_TRAINERS), async (req: Request, res: Response) => {
   try {
     const { roleId, departmentId, search, limit, offset } = req.query;
 
@@ -357,8 +376,9 @@ router.get('/', async (req: Request, res: Response) => {
 /**
  * Update user by ID
  * PUT /api/v1/users/:id
+ * CEO and CoS only — use /me for self-updates.
  */
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', requireRole(Role.CEO, Role.CoS), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { fullName, phone, country, departmentId, languagePreference, timezone, profilePhotoUrl } =
@@ -390,8 +410,9 @@ router.put('/:id', async (req: Request, res: Response) => {
 /**
  * Delete user
  * DELETE /api/v1/users/:id
+ * CEO only.
  */
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireRole(Role.CEO), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -492,8 +513,9 @@ router.post('/me/photo', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/users/:id/suspend
+ * CEO only — suspend a user account.
  */
-router.post('/:id/suspend', async (req: Request, res: Response) => {
+router.post('/:id/suspend', requireRole(Role.CEO), async (req: Request, res: Response) => {
   try {
     const suspendedBy = (req as any).user?.id;
     if (!suspendedBy) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -511,8 +533,9 @@ router.post('/:id/suspend', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/users/:id/reactivate
+ * CEO only — reactivate a suspended user account.
  */
-router.post('/:id/reactivate', async (req: Request, res: Response) => {
+router.post('/:id/reactivate', requireRole(Role.CEO), async (req: Request, res: Response) => {
   try {
     const reactivatedBy = (req as any).user?.id;
     if (!reactivatedBy) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -531,11 +554,21 @@ router.post('/:id/reactivate', async (req: Request, res: Response) => {
 
 /**
  * GET /api/v1/users/:id/activity
+ * CEO, CoS, CFO, COO, CTO, EA can view any user's activity.
+ * Other roles can only view their own activity.
  */
 router.get('/:id/activity', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id;
-    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    const requestingUserId = (req as any).user?.id;
+    const requestingRole = (req as any).user?.role;
+    if (!requestingUserId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const targetId = req.params.id;
+    const adminRoles = [Role.CEO, Role.CoS, Role.CFO, Role.COO, Role.CTO, Role.EA];
+    // Non-admin users can only view their own activity
+    if (!adminRoles.includes(requestingRole as Role) && targetId !== requestingUserId) {
+      return res.status(403).json({ success: false, error: 'Insufficient permissions' });
+    }
 
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
     const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
@@ -578,9 +611,9 @@ router.post('/bulk/import', requireRole(Role.CEO), async (req: Request, res: Res
 
 /**
  * POST /api/v1/users/resend-invitation
- * Resend invitation as password reset link
+ * Resend invitation as password reset link — CEO, CoS, CTO, CFO only.
  */
-router.post('/resend-invitation', async (req: Request, res: Response) => {
+router.post('/resend-invitation', requireRole(Role.CEO, Role.CoS, Role.CTO, Role.CFO), async (req: Request, res: Response) => {
   try {
     const requestedBy = (req as any).user?.id;
     if (!requestedBy) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -598,9 +631,9 @@ router.post('/resend-invitation', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/users/:id/role
- * Update a user's role (CEO only)
+ * Update a user's role — CEO only.
  */
-router.post('/:id/role', async (req: Request, res: Response) => {
+router.post('/:id/role', requireRole(Role.CEO), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { role } = req.body;
@@ -630,6 +663,136 @@ router.get('/roles', async (_req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Failed to get roles', { error });
     return res.status(500).json({ success: false, error: 'Failed to get roles' });
+  }
+});
+
+/**
+ * GET /api/v1/users/payout/missing
+ * List all payable-role users who have no payout details set.
+ * Accessible by CEO, CoS, CFO, COO, CTO, EA.
+ */
+router.get('/payout/missing',
+  requireRole(Role.CEO, Role.CoS, Role.CFO, Role.COO, Role.CTO, Role.EA),
+  async (_req: Request, res: Response) => {
+    try {
+      const result = await db.query(
+        `SELECT u.id, u.full_name, u.email, u.phone,
+                r.name AS role,
+                u.payout_method, u.payout_phone, u.payout_bank_name, u.payout_bank_account,
+                u.payout_updated_at
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+         WHERE r.name = ANY($1)
+           AND u.payout_method IS NULL
+         ORDER BY r.name, u.full_name`,
+        [PAYABLE_ROLES as unknown as string[]]
+      );
+      return res.json({ success: true, data: result.rows });
+    } catch (error: any) {
+      logger.error('Failed to list users with missing payout', { error });
+      return res.status(500).json({ success: false, error: 'Failed to fetch users' });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/users/payout/all
+ * List all payable-role users with their current payout details.
+ * Accessible by CEO, CoS, CFO, COO, CTO, EA.
+ */
+router.get('/payout/all',
+  requireRole(Role.CEO, Role.CoS, Role.CFO, Role.COO, Role.CTO, Role.EA),
+  async (_req: Request, res: Response) => {
+    try {
+      const result = await db.query(
+        `SELECT u.id, u.full_name, u.email, u.phone,
+                r.name AS role,
+                u.payout_method, u.payout_phone, u.payout_bank_name, u.payout_bank_account,
+                u.payout_updated_at,
+                ub.full_name AS payout_updated_by_name
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+         LEFT JOIN users ub ON ub.id = u.payout_updated_by
+         WHERE r.name = ANY($1)
+         ORDER BY r.name, u.full_name`,
+        [PAYABLE_ROLES as unknown as string[]]
+      );
+      return res.json({ success: true, data: result.rows });
+    } catch (error: any) {
+      logger.error('Failed to list payout details', { error });
+      return res.status(500).json({ success: false, error: 'Failed to fetch payout details' });
+    }
+  }
+);
+
+/**
+ * PATCH /api/v1/users/:id/payout
+ * Update payout details for a user.
+ * Only the specific higher-ups defined in PAYOUT_UPDATE_PERMISSIONS can change
+ * another user's payout details. Users cannot change their own payout details.
+ */
+router.patch('/:id/payout', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updater = (req as any).user;
+
+    if (!updater?.id) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { payoutMethod, payoutPhone, payoutBankName, payoutBankAccount } = req.body;
+
+    if (!payoutMethod) {
+      return res.status(400).json({ success: false, error: 'payoutMethod is required' });
+    }
+
+    const user = await userService.updatePayoutDetails(
+      id,
+      { payoutMethod, payoutPhone, payoutBankName, payoutBankAccount },
+      updater.id,
+      updater.role
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        id: user.id,
+        fullName: user.fullName,
+        role: user.roleName,
+        payoutMethod: user.payoutMethod,
+        payoutPhone: user.payoutPhone,
+        payoutBankName: user.payoutBankName,
+        payoutBankAccount: user.payoutBankAccount,
+        payoutUpdatedAt: user.payoutUpdatedAt,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Failed to update payout details', { error });
+    return res.status(400).json({ success: false, error: error.message || 'Failed to update payout details' });
+  }
+});
+
+/**
+ * Get user by ID
+ * GET /api/v1/users/:id
+ * IMPORTANT: Must be defined AFTER all specific GET routes (e.g. /roles, /departments,
+ * /payout/*, /verify-email) to prevent the wildcard from swallowing them.
+ * Requires CEO, CoS, CFO, COO, CTO, EA, or HEAD_OF_TRAINERS.
+ */
+router.get('/:id', requireRole(Role.CEO, Role.CoS, Role.CFO, Role.COO, Role.CTO, Role.EA, Role.HEAD_OF_TRAINERS), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const user = await userService.getUserById(id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    return res.json({ success: true, data: user });
+  } catch (error: any) {
+    logger.error('Failed to get user', { error });
+    return res.status(500).json({ success: false, error: 'Failed to get user' });
   }
 });
 

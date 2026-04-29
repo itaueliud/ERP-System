@@ -344,7 +344,7 @@ export class DashboardService {
     return this.getCachedMetrics(cacheKey, async () => {
       const dateCondition = this.buildDateCondition(dateRange, 'created_at');
 
-      const [clientsResult, projectsResult, paymentsResult, approvalsResult, reportsResult] =
+      const [clientsResult, projectsResult, paymentsResult, approvalsResult, reportsResult, activeProjectsResult, closedDealsResult] =
         await Promise.all([
           db.query(
             `SELECT status, COUNT(*) AS count
@@ -375,6 +375,20 @@ export class DashboardService {
                WHERE dr.user_id = u.id AND dr.report_date = CURRENT_DATE
              )`
           ),
+          // Active projects = started on or before today AND end date hasn't passed yet
+          db.query(
+            `SELECT COUNT(*) AS count
+             FROM projects
+             WHERE status IN ('ACTIVE', 'PENDING_APPROVAL')
+               AND (start_date IS NULL OR start_date <= CURRENT_DATE)
+               AND (end_date IS NULL OR end_date >= CURRENT_DATE)`
+          ),
+          // Closed deals = projects whose end_date has passed (contract period over)
+          db.query(
+            `SELECT COUNT(*) AS count
+             FROM projects
+             WHERE end_date IS NOT NULL AND end_date < CURRENT_DATE`
+          ),
         ]);
 
       const clientsByStatus = this.groupByField(clientsResult.rows, 'status', 'count');
@@ -397,16 +411,27 @@ export class DashboardService {
         clients: {
           total: clientsResult.rows.reduce((sum: number, r: any) => sum + parseInt(r.count), 0),
           pendingCommitment: parseInt(clientsByStatus['PENDING_COMMITMENT'] ?? '0'),
-          leads: parseInt(clientsByStatus['LEAD'] ?? '0'),
-          qualifiedLeads: parseInt(clientsByStatus['QUALIFIED_LEAD'] ?? '0'),
-          projects: parseInt(clientsByStatus['PROJECT'] ?? '0'),
+          // Map actual client statuses — all non-closed statuses count as leads
+          leads: (
+            parseInt(clientsByStatus['NEW_LEAD'] ?? '0') +
+            parseInt(clientsByStatus['CONVERTED'] ?? '0') +
+            parseInt(clientsByStatus['LEAD_ACTIVATED'] ?? '0') +
+            parseInt(clientsByStatus['LEAD_QUALIFIED'] ?? '0') +
+            parseInt(clientsByStatus['NEGOTIATION'] ?? '0')
+          ),
+          qualifiedLeads: (
+            parseInt(clientsByStatus['LEAD_QUALIFIED'] ?? '0') +
+            parseInt(clientsByStatus['LEAD_ACTIVATED'] ?? '0')
+          ),
+          projects: parseInt(clientsByStatus['CLOSED_WON'] ?? '0'),
         },
         projects: {
           total: projectsResult.rows.reduce((sum: number, r: any) => sum + parseInt(r.count), 0),
           pendingApproval: parseInt(projectsByStatus['PENDING_APPROVAL'] ?? '0'),
-          active: parseInt(projectsByStatus['ACTIVE'] ?? '0'),
+          active: parseInt(activeProjectsResult.rows[0]?.count ?? '0'),
           onHold: parseInt(projectsByStatus['ON_HOLD'] ?? '0'),
-          completed: parseInt(projectsByStatus['COMPLETED'] ?? '0'),
+          // Closed deals = projects whose end_date has passed
+          completed: parseInt(closedDealsResult.rows[0]?.count ?? '0'),
           cancelled: parseInt(projectsByStatus['CANCELLED'] ?? '0'),
         },
         payments: {
@@ -593,7 +618,7 @@ export class DashboardService {
    */
   async getPropertyMetrics(): Promise<PropertyMetrics> {
     return this.getCachedMetrics('property-metrics', async () => {
-      const [statusResult, typeResult] = await Promise.all([
+      const [statusResult, typeResult, marketerResult] = await Promise.all([
         db.query(
           `SELECT status, COUNT(*) AS count, COALESCE(SUM(price), 0) AS total_value
            FROM property_listings
@@ -605,6 +630,14 @@ export class DashboardService {
            GROUP BY property_type
            ORDER BY count DESC`
         ),
+        // Also count TST PlotConnect (marketer_properties) submissions
+        db.query(
+          `SELECT
+             COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS published,
+             COUNT(*) FILTER (WHERE payment_status = 'PAID') AS paid
+           FROM marketer_properties`
+        ).catch(() => ({ rows: [{ total: 0, published: 0, paid: 0 }] })),
       ]);
 
       const statusMap = this.groupByField(statusResult.rows, 'status', 'count');
@@ -613,12 +646,17 @@ export class DashboardService {
         0
       );
       const total = statusResult.rows.reduce((sum: number, r: any) => sum + parseInt(r.count), 0);
+      const marketer = marketerResult.rows[0] || {};
 
       return {
-        total,
+        total: total + parseInt(marketer.total || '0'),
         available: parseInt(statusMap['AVAILABLE'] ?? '0'),
         sold: parseInt(statusMap['SOLD'] ?? '0'),
         unavailable: parseInt(statusMap['UNAVAILABLE'] ?? '0'),
+        // PlotConnect published properties
+        published: parseInt(marketer.published || '0'),
+        plotconnectTotal: parseInt(marketer.total || '0'),
+        plotconnectPaid: parseInt(marketer.paid || '0'),
         totalValue,
         byType: typeResult.rows.map((r: any) => ({
           type: r.property_type,
@@ -626,7 +664,7 @@ export class DashboardService {
           totalValue: parseFloat(r.total_value),
         })),
         generatedAt: new Date(),
-      };
+      } as any;
     });
   }
 
@@ -849,7 +887,7 @@ export class DashboardService {
            FROM users u
            LEFT JOIN github_commits gc ON gc.author_id = u.id
            LEFT JOIN github_pull_requests gpr ON gpr.author_id = u.id
-           WHERE u.role IN ('DEVELOPER', 'TECHNOLOGY_USER')
+           WHERE u.role IN ('DEVELOPER', 'TECH_STAFF')
            GROUP BY u.id, u.name, u.github_username
            ORDER BY commits DESC
            LIMIT 20`
@@ -1019,7 +1057,7 @@ export class DashboardService {
         return this.getCLevelDashboard(userId, role);
       case Role.OPERATIONS_USER:
         return this.getOperationsDashboard(userId);
-      case Role.TECHNOLOGY_USER:
+      case Role.TECH_STAFF:
       case Role.DEVELOPER:
         return this.getTechnologyDashboard(userId);
       case Role.AGENT:

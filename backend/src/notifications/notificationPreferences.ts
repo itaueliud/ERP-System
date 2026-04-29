@@ -25,15 +25,28 @@ export interface NotificationPreference {
  * Mirrors the priority-based routing in NotificationService.
  */
 export const DEFAULT_CHANNELS: Record<NotificationType, DeliveryChannel[]> = {
-  [NotificationType.PAYMENT_APPROVAL]:    [DeliveryChannel.SMS],
-  [NotificationType.PAYMENT_EXECUTED]:    [DeliveryChannel.SMS],
-  [NotificationType.LEAD_CONVERTED]:      [DeliveryChannel.EMAIL],
-  [NotificationType.REPORT_OVERDUE]:      [DeliveryChannel.EMAIL],
-  [NotificationType.SERVICE_AMOUNT_CHANGE]: [DeliveryChannel.SMS],
-  [NotificationType.CONTRACT_GENERATED]:  [DeliveryChannel.EMAIL],
-  [NotificationType.MESSAGE_RECEIVED]:    [DeliveryChannel.PUSH],
-  [NotificationType.TASK_ASSIGNED]:       [DeliveryChannel.PUSH],
-  [NotificationType.TASK_DUE]:            [DeliveryChannel.PUSH],
+  [NotificationType.PAYMENT_APPROVAL]:             [DeliveryChannel.SMS],
+  [NotificationType.PAYMENT_EXECUTED]:             [DeliveryChannel.SMS],
+  [NotificationType.LEAD_CONVERTED]:               [DeliveryChannel.EMAIL],
+  [NotificationType.REPORT_OVERDUE]:               [DeliveryChannel.EMAIL],
+  [NotificationType.SERVICE_AMOUNT_CHANGE]:        [DeliveryChannel.SMS],
+  [NotificationType.CONTRACT_GENERATED]:           [DeliveryChannel.EMAIL],
+  [NotificationType.MESSAGE_RECEIVED]:             [DeliveryChannel.PUSH],
+  [NotificationType.TASK_ASSIGNED]:                [DeliveryChannel.PUSH],
+  [NotificationType.TASK_DUE]:                     [DeliveryChannel.PUSH],
+  [NotificationType.NEW_LEAD_ADDED]:               [DeliveryChannel.SMS],
+  [NotificationType.COMMITMENT_PAYMENT_CONFIRMED]: [DeliveryChannel.EMAIL],
+  [NotificationType.LEAD_BECOMES_PROJECT]:         [DeliveryChannel.EMAIL],
+  [NotificationType.PAYMENT_APPROVED]:             [DeliveryChannel.PUSH],
+  [NotificationType.AMOUNT_CHANGE_PROPOSED]:       [DeliveryChannel.PUSH],
+  [NotificationType.AMOUNT_CHANGE_CONFIRMED]:      [DeliveryChannel.PUSH],
+  [NotificationType.SIGNED_CONTRACT_UPLOADED]:     [DeliveryChannel.PUSH],
+  [NotificationType.NEW_PLOTCONNECT_PROPERTY]:     [DeliveryChannel.PUSH],
+  [NotificationType.DAILY_REPORT_OVERDUE]:         [DeliveryChannel.EMAIL],
+  [NotificationType.GITHUB_COMMIT_PR]:             [DeliveryChannel.PUSH],
+  [NotificationType.NEW_USER_INVITED]:             [DeliveryChannel.EMAIL],
+  [NotificationType.SECURITY_ALERT]:               [DeliveryChannel.PUSH],
+  [NotificationType.SYSTEM_ALERT]:                 [DeliveryChannel.PUSH],
 };
 
 // ─── Service ──────────────────────────────────────────────────────────────────

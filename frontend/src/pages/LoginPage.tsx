@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from '../shared/utils/router';
 import { useAuth, getPortalForRole, ROLE_PORTAL_MAP } from '../shared/components/auth/AuthContext';
 import { PORTAL_THEMES } from '../shared/theme/portalThemes';
-import TSTLogo, { TSTEmblem } from '../shared/components/TSTLogo';
+import { TSTEmblem } from '../shared/components/TSTLogo';
 
 // Map portal path → theme id (spec §3 gateway URL naming)
 const PATH_THEME: Record<string, string> = {
@@ -59,8 +59,8 @@ export default function LoginPage() {
     setLoading(true);
     const result = await login(email, password);
     setLoading(false);
-    if (result.success && result.portalPath) {
-      navigate(result.portalPath, { replace: true });
+    if (result.success) {
+      // AuthContext sets user; redirect handled by useEffect above
     } else {
       setError(result.error || 'Login failed');
     }
@@ -103,7 +103,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right login panel */}
-      <div className="flex-1 flex items-center justify-center p-6">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-8">
@@ -112,7 +112,7 @@ export default function LoginPage() {
             <p className="text-sm text-gray-500">{theme.name}</p>
           </div>
 
-          <div className="rounded-3xl p-8" style={{ background: "rgba(255,255,255,0.75)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.6)", boxShadow: "0 20px 60px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8)" }}>
+          <div className="rounded-3xl p-6 sm:p-8" style={{ background: "rgba(255,255,255,0.75)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.6)", boxShadow: "0 20px 60px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8)" }}>
             <h2 className="text-2xl font-bold text-gray-900 mb-1">Sign in</h2>
             <p className="text-gray-500 text-sm mb-6">Access your role-based portal</p>
 
@@ -130,8 +130,8 @@ export default function LoginPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
                   placeholder="you@tst.com"
-                  className="w-full px-4 py-3 rounded-xl text-sm focus:outline-none transition-all" style={{ background: "linear-gradient(145deg, #e8ecf8, #f0f4ff)", boxShadow: "inset 3px 3px 6px #c8cde0, inset -3px -3px 6px #ffffff", border: "none", outline: "none" }}
-                  style={{ '--tw-ring-color': theme.hex } as any}
+                  className="w-full px-4 py-3 rounded-xl text-sm focus:outline-none transition-all"
+                  style={{ background: "linear-gradient(145deg, #e8ecf8, #f0f4ff)", boxShadow: "inset 3px 3px 6px #c8cde0, inset -3px -3px 6px #ffffff", border: "none", outline: "none", '--tw-ring-color': theme.hex } as any}
                 />
               </div>
               <div>
@@ -162,7 +162,7 @@ export default function LoginPage() {
             {/* Quick-fill dev credentials */}
             <div className="mt-6 pt-5 border-t border-gray-100">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Quick access — dev credentials</p>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                 {DEV_CREDS.map((c) => (
                   <button key={c.email} onClick={() => fillCreds(c)}
                     className="text-xs px-2 py-1.5 rounded-lg border border-gray-100 text-gray-600 hover:border-gray-300 hover:text-gray-900 transition-all text-left truncate">

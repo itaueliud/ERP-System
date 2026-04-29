@@ -33,7 +33,9 @@ export default function MarketingDashboard({ user, onLogout }: { user: any; onLo
     { key: 'leads',         endpoint: '/api/v1/marketing/leads',            fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.data || []) },
     { key: 'tasks',         endpoint: '/api/v1/tasks',                      fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.data || r.tasks || []) },
     { key: 'achievements',  endpoint: '/api/v1/achievements',               fallback: [], transform: (r: any) => Array.isArray(r) ? r : (r.data || []) },
-  ] as any);
+  ] as any, [
+    'data:client:created', 'data:lead:converted', 'data:task:assigned', 'data:metrics:updated',
+  ]);
 
   const d = data as any;
   const metrics = d.metrics || {};
@@ -150,7 +152,10 @@ export default function MarketingDashboard({ user, onLogout }: { user: any; onLo
             <div className="mb-4"><label className={labelCls}>Operational Updates</label><textarea rows={3} value={reportForm.operationalUpdates} onChange={e => setReportForm(f => ({ ...f, operationalUpdates: e.target.value }))} className={`${inputCls} resize-none`} /></div>
             <div className="mb-4"><label className={labelCls}>Recommendations</label><textarea rows={3} value={reportForm.recommendations} onChange={e => setReportForm(f => ({ ...f, recommendations: e.target.value }))} className={`${inputCls} resize-none`} /></div>
             <div className="mb-6"><label className={labelCls}>Hours worked</label><input type="number" min={0} max={24} value={reportForm.hours} onChange={e => setReportForm(f => ({ ...f, hours: e.target.value }))} className={inputCls} /></div>
-            <PortalButton color={theme.hex} fullWidth>Submit Evening Report</PortalButton>
+            <div className="flex gap-2">
+              <PortalButton color={theme.hex} fullWidth>Submit Evening Report</PortalButton>
+              <PortalButton variant="secondary" onClick={() => setReportForm({ campaignResults: '', operationalUpdates: '', recommendations: '', hours: '' })}>Clear</PortalButton>
+            </div>
           </form>
         </div>
       )}

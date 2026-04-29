@@ -24,6 +24,8 @@ export class AdminService {
     const total = await db.query(`SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id ${where}`, values);
     const limit = filters.limit || 50;
     const offset = filters.offset || 0;
+    const limitIdx = p++;
+    const offsetIdx = p++;
     values.push(limit, offset);
 
     const rows = await db.query(
@@ -32,7 +34,7 @@ export class AdminService {
               u.two_fa_enabled, u.two_fa_mandatory, u.last_login, u.created_at
        FROM users u JOIN roles r ON r.id = u.role_id
        ${where}
-       ORDER BY u.created_at DESC LIMIT $${p} OFFSET $${p + 1}`,
+       ORDER BY u.created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       values
     );
 
@@ -116,6 +118,8 @@ export class AdminService {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const limit = filters.limit || 100;
     const offset = filters.offset || 0;
+    const limitIdx = p++;
+    const offsetIdx = p++;
     values.push(limit, offset);
 
     const rows = await db.query(
@@ -126,7 +130,7 @@ export class AdminService {
        JOIN users u ON u.id = al.user_id
        JOIN roles r ON r.id = u.role_id
        ${where}
-       ORDER BY al.created_at DESC LIMIT $${p} OFFSET $${p + 1}`,
+       ORDER BY al.created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       values
     );
 

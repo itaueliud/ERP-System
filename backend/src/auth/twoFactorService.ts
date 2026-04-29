@@ -2,7 +2,11 @@ import crypto from 'crypto';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import { db } from '../database/connection';
+import { redis } from '../cache/connection';
 import logger from '../utils/logger';
+
+const MAX_2FA_ATTEMPTS = 5;
+const LOCKOUT_WINDOW_SECONDS = 15 * 60; // 15 minutes
 
 export interface TwoFactorSetup {
   secret: string;
@@ -127,6 +131,23 @@ export class TwoFactorService {
    * Requirement 48.11: Log all 2FA authentication attempts
    */
   async verify2FA(userId: string, token: string, ipAddress: string): Promise<TwoFactorVerification> {
+    // ── Brute-force lockout ──────────────────────────────────────────────────
+    const lockKey = `2fa:attempts:${userId}`;
+    try {
+      const client = redis.getClient();
+      const attempts = await client.incr(lockKey);
+      if (attempts === 1) await client.expire(lockKey, LOCKOUT_WINDOW_SECONDS);
+      if (attempts > MAX_2FA_ATTEMPTS) {
+        const ttl = await client.ttl(lockKey);
+        logger.warn('2FA brute-force lockout triggered', { userId, attempts, ttl });
+        return { valid: false, error: `Too many failed attempts. Try again in ${Math.ceil(ttl / 60)} minutes.` };
+      }
+    } catch (redisErr) {
+      // Redis unavailable — fail closed for security on 2FA
+      logger.error('2FA rate-limit Redis error — denying attempt', { userId, redisErr });
+      return { valid: false, error: 'Verification temporarily unavailable. Please try again.' };
+    }
+
     try {
       // Get user's 2FA secret
       const result = await db.query(
@@ -136,7 +157,6 @@ export class TwoFactorService {
 
       if (result.rows.length === 0) {
         logger.warn('2FA verification attempted for non-existent user', { userId });
-        // Log the failed attempt
         await db.query(
           `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, ip_address, user_agent, result, metadata, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
@@ -158,7 +178,7 @@ export class TwoFactorService {
         secret: two_fa_secret,
         encoding: 'base32',
         token,
-        window: 1, // Allow 1 step before/after (30 seconds each direction)
+        window: 1,
       });
 
       // Log authentication attempt
@@ -166,18 +186,15 @@ export class TwoFactorService {
         `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, ip_address, user_agent, result, metadata, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
         [
-          userId,
-          '2FA_VERIFICATION',
-          'USER',
-          userId,
-          ipAddress,
-          '2FA Service',
+          userId, '2FA_VERIFICATION', 'USER', userId, ipAddress, '2FA Service',
           verified ? 'SUCCESS' : 'FAILURE',
           JSON.stringify({ token_length: token.length }),
         ]
       );
 
       if (verified) {
+        // Clear lockout counter on success
+        try { await redis.getClient().del(lockKey); } catch { /* non-fatal */ }
         logger.info('2FA verification successful', { userId });
         return { valid: true };
       } else {
@@ -258,9 +275,20 @@ export class TwoFactorService {
   /**
    * Disable 2FA for a user
    * Requirement 48.9: Allow administrators to disable 2FA for users who lost access
+   * doc §25: 2FA is MANDATORY for CEO, CoS, CFO, EA — cannot be disabled by anyone
    */
   async disable2FA(userId: string, adminId: string): Promise<void> {
     try {
+      // doc §25: Block disabling 2FA for mandatory roles — even CEO cannot disable their own
+      const MANDATORY_2FA_ROLES = ['CEO', 'CoS', 'CFO', 'EA'];
+      const userResult = await db.query(
+        `SELECT r.name AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`,
+        [userId]
+      );
+      if (userResult.rows.length > 0 && MANDATORY_2FA_ROLES.includes(userResult.rows[0].role)) {
+        throw new Error(`2FA cannot be disabled for ${userResult.rows[0].role} — it is mandatory for this role`);
+      }
+
       // Disable 2FA
       await db.query(
         'UPDATE users SET two_fa_enabled = FALSE, two_fa_secret = NULL WHERE id = $1',

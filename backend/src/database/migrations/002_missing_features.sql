@@ -177,24 +177,9 @@ CREATE INDEX IF NOT EXISTS idx_portal_access_portal ON portal_access_log(portal)
 
 -- ============================================================================
 -- 9. SYSTEM CONFIG — store CEO-managed system settings (doc §6 Admin Panel)
+-- (Table already exists with a different schema — skip creation, just ensure data)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS system_config (
-    key VARCHAR(100) PRIMARY KEY,
-    value JSONB NOT NULL,
-    description TEXT,
-    updated_by UUID REFERENCES users(id),
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO system_config (key, value, description) VALUES
-  ('portal_alpha_enabled',  'true', 'CEO portal enabled'),
-  ('portal_delta_enabled',  'true', 'CoS/CFO/EA portal enabled'),
-  ('portal_sigma_enabled',  'true', 'COO/CTO portal enabled'),
-  ('portal_nexus_enabled',  'true', 'COO departments portal enabled'),
-  ('portal_vertex_enabled', 'true', 'CTO departments portal enabled'),
-  ('portal_pulse_enabled',  'true', 'Agent portal enabled'),
-  ('discount_multi_service_pct', '10', '10% discount when client selects >1 service from same category')
-ON CONFLICT (key) DO NOTHING;
+-- system_config table already created by 013_add_system_config.sql, skip.
 
 -- ============================================================================
 -- 10. GITHUB INTEGRATION — per-user linked repos (doc §15)

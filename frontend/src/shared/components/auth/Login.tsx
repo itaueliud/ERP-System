@@ -1,4 +1,4 @@
-import React, { useState, FormEvent } from 'react';
+import { useState, FormEvent } from 'react';
 
 export interface LoginProps {
   onSubmit: (email: string, password: string) => void | Promise<void>;

@@ -18,12 +18,33 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { name, email, phone, country, industryCategory, serviceDescription } = req.body;
+    const { name, email, phone, country, industryCategory, serviceDescription, paymentPlan } = req.body;
 
-    // Validate required fields
-    if (!name || !email || !phone || !country || !industryCategory || !serviceDescription) {
+    // Validate required fields — country falls back to agent's own country if not provided
+    if (!name || !email || !phone || !industryCategory || !serviceDescription) {
       return res.status(400).json({
-        error: 'Missing required fields: name, email, phone, country, industryCategory, serviceDescription',
+        error: 'Missing required fields: name, email, phone, industryCategory, serviceDescription',
+      });
+    }
+
+    // Resolve country: use provided value, or fall back to agent's country from DB
+    let resolvedCountry = country;
+    if (!resolvedCountry) {
+      const agentRow = await (await import('../database/connection')).db.query(
+        'SELECT country FROM users WHERE id = $1', [agentId]
+      );
+      resolvedCountry = agentRow.rows[0]?.country || 'Kenya';
+    }
+
+    // Duplicate check — same agent, same email + phone
+    const { db } = await import('../database/connection');
+    const existing = await db.query(
+      `SELECT id, name FROM clients WHERE agent_id = $1 AND lower(email) = lower($2) AND phone = $3 LIMIT 1`,
+      [agentId, email, phone]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({
+        error: `Client already registered. A client with this email and phone number already exists (${existing.rows[0].name}).`,
       });
     }
 
@@ -31,10 +52,11 @@ router.post('/', async (req: Request, res: Response) => {
       name,
       email,
       phone,
-      country,
+      country: resolvedCountry,
       industryCategory,
       serviceDescription,
       agentId,
+      paymentPlan: paymentPlan || null,
     };
 
     const client = await clientService.createClient(clientInput);
@@ -42,7 +64,55 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(201).json(client);
   } catch (error: any) {
     logger.error('Error creating client', { error, body: req.body });
+    // Handle unique constraint violation from DB
+    if (error.code === '23505' && error.constraint === 'uq_clients_agent_email_phone') {
+      return res.status(409).json({ error: 'Client already registered with this email and phone number.' });
+    }
     return res.status(400).json({ error: error.message || 'Failed to create client' });
+  }
+});
+
+/**
+ * GET /api/clients/all
+ * List all clients across all agents — for CEO/admin use (contract form picker).
+ */
+router.get('/all', async (req: Request, res: Response) => {
+  try {
+    const role = (req as any).user?.role;
+    const userId = (req as any).user?.id;
+    const allowed = ['CEO', 'CoS', 'CFO', 'COO', 'CTO', 'EA', 'CFO_ASSISTANT', 'OPERATIONS_USER', 'HEAD_OF_TRAINERS', 'TRAINER'];
+    if (!allowed.includes(role)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { search, limit, offset } = req.query;
+
+    // Trainers only see clients assigned to them
+    if (role === 'TRAINER') {
+      const { db } = await import('../database/connection');
+      const result = await db.query(
+        `SELECT c.id, c.reference_number, c.name, c.email, c.phone, c.country,
+                c.industry_category, c.service_description, c.status, c.agent_id,
+                c.trainer_id, c.estimated_value, c.priority, c.expected_start_date,
+                c.created_at, c.updated_at,
+                u.full_name AS agent_name
+         FROM clients c
+         LEFT JOIN users u ON u.id = c.agent_id
+         WHERE c.trainer_id = $1
+         ORDER BY c.updated_at DESC`,
+        [userId]
+      );
+      return res.json({ clients: result.rows, total: result.rows.length });
+    }
+
+    const result = await clientService.listAllClients({
+      search: search as string | undefined,
+      limit: limit ? parseInt(limit as string) : undefined,
+      offset: offset ? parseInt(offset as string) : undefined,
+    });
+    return res.json(result);
+  } catch (error: any) {
+    logger.error('Error listing all clients', { error });
+    return res.status(500).json({ error: 'Failed to list clients' });
   }
 });
 
@@ -222,10 +292,10 @@ router.post('/:id/initiate-commitment-payment', async (req: Request, res: Respon
       return res.status(403).json({ error: 'Forbidden: You can only initiate payments for your own clients' });
     }
 
-    // Verify client status is PENDING_COMMITMENT
-    if (client.status !== ClientStatus.PENDING_COMMITMENT) {
+    // Verify client status allows commitment payment
+    if (client.status !== ClientStatus.NEW_LEAD && client.status !== 'PENDING_COMMITMENT' as any) {
       return res.status(400).json({
-        error: 'Client must have PENDING_COMMITMENT status to initiate commitment payment',
+        error: 'Client must have NEW_LEAD or PENDING_COMMITMENT status to initiate commitment payment',
       });
     }
 
@@ -255,23 +325,22 @@ router.post('/:id/initiate-commitment-payment', async (req: Request, res: Respon
 router.post('/:id/qualify', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { estimatedValue, priority, expectedStartDate, notes } = req.body;
+    const { estimatedValue, priority, expectedStartDate } = req.body;
 
     // Validate required fields
-    if (!estimatedValue || !priority || !expectedStartDate) {
+    if (!estimatedValue || !priority) {
       return res.status(400).json({
-        error: 'Missing required fields: estimatedValue, priority, expectedStartDate',
+        error: 'Missing required fields: estimatedValue, priority',
       });
     }
 
     const qualificationData = {
       estimatedValue: parseFloat(estimatedValue),
       priority,
-      expectedStartDate: new Date(expectedStartDate),
-      notes,
+      expectedStartDate: expectedStartDate ? new Date(expectedStartDate) : new Date(),
     };
 
-    const client = await clientService.qualifyLead(id, qualificationData);
+    const client = await clientService.qualifyLeadWithData(id, qualificationData);
 
     return res.json(client);
   } catch (error: any) {
@@ -373,6 +442,41 @@ router.post('/:id/timeline/notes', async (req: Request, res: Response) => {
       return res.status(400).json({ error: error.message });
     }
     return res.status(500).json({ error: 'Failed to add client timeline note' });
+  }
+});
+
+/**
+ * PATCH /api/clients/:id/status
+ * Agent advances their client through the pipeline stages.
+ */
+router.patch('/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const agentId = (req as any).user?.id;
+    const { status } = req.body;
+
+    if (!agentId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const validStatuses = Object.values(ClientStatus);
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const client = await clientService.getClient(id);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (client.agentId !== agentId) return res.status(403).json({ error: 'Forbidden' });
+
+    const { db } = await import('../database/connection');
+    await db.query(
+      `UPDATE clients SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [status, id]
+    );
+
+    logger.info('Client status updated', { clientId: id, agentId, oldStatus: client.status, newStatus: status });
+    return res.json({ success: true, data: { id, status } });
+  } catch (error: any) {
+    logger.error('Error updating client status', { error, clientId: req.params.id });
+    return res.status(500).json({ error: error.message || 'Failed to update status' });
   }
 });
 

@@ -188,21 +188,23 @@ export const notificationsApi = {
 };
 
 // ---------------------------------------------------------------------------
-// Metrics API (role-specific)
+// Metrics API (role-specific) — all resolved via /api/v1/dashboard/role
 // ---------------------------------------------------------------------------
 
 export const metricsApi = {
+  // All role-specific dashboards use the same endpoint; the backend
+  // reads req.user.role and returns the appropriate data.
   getCeoMetrics: () =>
-    apiClient.get<unknown>('/api/v1/metrics/ceo'),
+    apiClient.get<unknown>('/api/v1/dashboard/role'),
 
   getExecutiveMetrics: () =>
-    apiClient.get<unknown>('/api/v1/metrics/executive'),
+    apiClient.get<unknown>('/api/v1/dashboard/role'),
 
   getOperationsMetrics: () =>
-    apiClient.get<unknown>('/api/v1/metrics/operations'),
+    apiClient.get<unknown>('/api/v1/dashboard/role'),
 
   getTechMetrics: () =>
-    apiClient.get<unknown>('/api/v1/metrics/technology'),
+    apiClient.get<unknown>('/api/v1/dashboard/role'),
 };
 
 // ---------------------------------------------------------------------------
@@ -210,46 +212,52 @@ export const metricsApi = {
 // ---------------------------------------------------------------------------
 
 export const approvalsApi = {
+  // Service amount approvals — backend: GET /api/v1/approvals/service-amounts (misc routes)
   getServiceAmountApprovals: () =>
     apiClient.get<unknown[]>('/api/v1/approvals/service-amounts'),
 
+  // Backend: POST /api/v1/service-amounts/changes/:id/approve (misc routes)
   approveServiceAmount: (id: string) =>
-    apiClient.post<void>(`/api/v1/approvals/service-amounts/${id}/approve`),
+    apiClient.post<void>(`/api/v1/service-amounts/changes/${id}/approve`),
 
   rejectServiceAmount: (id: string, reason: string) =>
-    apiClient.post<void>(`/api/v1/approvals/service-amounts/${id}/reject`, { reason }),
+    apiClient.post<void>(`/api/v1/service-amounts/changes/${id}/reject`, { reason }),
 
+  // Payment approvals — backend: GET /api/v1/payments/approvals
   getPaymentApprovals: () =>
-    apiClient.get<unknown[]>('/api/v1/approvals/payments'),
+    apiClient.get<unknown[]>('/api/v1/payments/approvals'),
 
   approvePayment: (id: string) =>
-    apiClient.post<void>(`/api/v1/approvals/payments/${id}/approve`),
+    apiClient.post<void>(`/api/v1/payments/approvals/${id}/approve`),
 
   rejectPayment: (id: string, reason: string) =>
-    apiClient.post<void>(`/api/v1/approvals/payments/${id}/reject`, { reason }),
+    apiClient.post<void>(`/api/v1/payments/approvals/${id}/reject`, { reason }),
 
   getApprovedPayments: () =>
-    apiClient.get<unknown[]>('/api/v1/approvals/payments/approved'),
+    apiClient.get<unknown[]>('/api/v1/payments/approvals'),
 
   executePayment: (id: string) =>
-    apiClient.post<void>(`/api/v1/approvals/payments/${id}/execute`),
+    apiClient.post<void>(`/api/v1/payments/approvals/${id}/execute`),
 };
 
 // ---------------------------------------------------------------------------
-// Security API
+// Security API — proxied through /api/v1 misc routes
 // ---------------------------------------------------------------------------
 
 export const securityApi = {
+  // Backend: GET /api/v1/security/alerts (misc routes)
   getAlerts: () =>
     apiClient.get<unknown[]>('/api/v1/security/alerts'),
 
+  // Backend: GET /api/v1/audit-logs
   getAuditLog: (page?: number, limit?: number) =>
-    apiClient.get<unknown[]>('/api/v1/security/audit-log', {
+    apiClient.get<unknown[]>('/api/v1/audit-logs', {
       params: { page, limit },
     }),
 
+  // Backend: GET /api/v1/audit-logs/security-alerts
   getAuditSummary: () =>
-    apiClient.get<unknown[]>('/api/v1/security/audit-summary'),
+    apiClient.get<unknown[]>('/api/v1/audit-logs/security-alerts'),
 };
 
 // ---------------------------------------------------------------------------
@@ -257,9 +265,11 @@ export const securityApi = {
 // ---------------------------------------------------------------------------
 
 export const reportsApi = {
+  // Backend: GET /api/v1/daily-reports/mine
   getDailyReports: () =>
-    apiClient.get<unknown[]>('/api/v1/reports/daily'),
+    apiClient.get<unknown[]>('/api/v1/daily-reports/mine'),
 
+  // Backend: GET /api/v1/reports/compliance (misc routes)
   getComplianceReports: () =>
     apiClient.get<unknown[]>('/api/v1/reports/compliance'),
 };
@@ -269,25 +279,27 @@ export const reportsApi = {
 // ---------------------------------------------------------------------------
 
 export const achievementsApi = {
+  // Backend: GET /api/v1/achievements (misc routes)
   getAchievements: () =>
     apiClient.get<unknown[]>('/api/v1/achievements'),
 };
 
 // ---------------------------------------------------------------------------
-// Leads API
+// Leads API — backend uses /api/v1/clients with status filtering
 // ---------------------------------------------------------------------------
 
 export const leadsApi = {
+  // Leads are just clients with specific statuses
   getLeads: (page?: number, limit?: number) =>
-    apiClient.get<unknown[]>('/api/v1/leads', {
-      params: { page, limit },
+    apiClient.get<unknown[]>('/api/v1/clients', {
+      params: { page, limit, status: 'NEW_LEAD,CONVERTED,LEAD_ACTIVATED,LEAD_QUALIFIED,NEGOTIATION' },
     }),
 
   createLead: (data: unknown) =>
-    apiClient.post<unknown>('/api/v1/leads', data),
+    apiClient.post<unknown>('/api/v1/clients', data),
 
   updateLead: (id: string, data: unknown) =>
-    apiClient.put<unknown>(`/api/v1/leads/${id}`, data),
+    apiClient.put<unknown>(`/api/v1/clients/${id}`, data),
 };
 
 // ---------------------------------------------------------------------------
@@ -320,23 +332,29 @@ export const projectsApi = {
 };
 
 // ---------------------------------------------------------------------------
-// GitHub API
+// GitHub API — project-scoped, not global
+// Note: GitHub integration is per-project at /api/v1/projects/:id/github/*
+// These global endpoints are provided by misc routes for aggregated views
 // ---------------------------------------------------------------------------
 
 export const githubApi = {
+  // Backend: GET /api/v1/github/repos (misc routes)
   getRepos: () =>
     apiClient.get<unknown[]>('/api/v1/github/repos'),
 
+  // Backend: GET /api/v1/github/commits (misc routes)
   getCommits: (repo?: string) =>
     apiClient.get<unknown[]>('/api/v1/github/commits', {
       params: { repo },
     }),
 
+  // Backend: GET /api/v1/github/contributions (misc routes)
   getContributions: () =>
     apiClient.get<unknown[]>('/api/v1/github/contributions'),
 
+  // Aggregated activity view
   getActivity: () =>
-    apiClient.get<unknown>('/api/v1/github/activity'),
+    apiClient.get<unknown>('/api/v1/dashboard/metrics'),
 };
 
 // ---------------------------------------------------------------------------
@@ -361,9 +379,11 @@ export const chatApi = {
 // ---------------------------------------------------------------------------
 
 export const commissionApi = {
+  // Backend: GET /api/v1/commissions (misc routes)
   getCommissions: () =>
     apiClient.get<unknown[]>('/api/v1/commissions'),
 
+  // Backend: GET /api/v1/commissions/me (misc routes)
   getMyCommissions: () =>
     apiClient.get<unknown[]>('/api/v1/commissions/me'),
 };
@@ -393,3 +413,149 @@ export const trainingApi = {
   assignCourse: (data: unknown) =>
     apiClient.post<unknown>('/api/v1/training/assignments', data),
 };
+
+// ---------------------------------------------------------------------------
+// Incidents API
+// ---------------------------------------------------------------------------
+
+export const incidentsApi = {
+  getIncidents: (status?: string, severity?: string, page?: number, limit?: number) =>
+    apiClient.get<unknown[]>('/api/v1/incidents', {
+      params: { status, severity, page, limit },
+    }),
+
+  createIncident: (data: unknown) =>
+    apiClient.post<unknown>('/api/v1/incidents', data),
+
+  updateIncident: (id: string, data: unknown) =>
+    apiClient.put<unknown>(`/api/v1/incidents/${id}`, data),
+};
+
+// ---------------------------------------------------------------------------
+// Deployments API
+// ---------------------------------------------------------------------------
+
+export const deploymentsApi = {
+  getDeployments: (projectId?: string, environment?: string, status?: string, page?: number, limit?: number) =>
+    apiClient.get<unknown[]>('/api/v1/deployments', {
+      params: { projectId, environment, status, page, limit },
+    }),
+
+  createDeployment: (data: unknown) =>
+    apiClient.post<unknown>('/api/v1/deployments', data),
+
+  updateDeploymentStatus: (id: string, status: string, deploymentNotes?: string) =>
+    apiClient.patch<unknown>(`/api/v1/deployments/${id}/status`, { status, deploymentNotes }),
+};
+
+// ---------------------------------------------------------------------------
+// Risks API
+// ---------------------------------------------------------------------------
+
+export const risksApi = {
+  getRisks: (projectId?: string, status?: string, page?: number, limit?: number) =>
+    apiClient.get<unknown[]>('/api/v1/risks', {
+      params: { projectId, status, page, limit },
+    }),
+
+  createRisk: (data: unknown) =>
+    apiClient.post<unknown>('/api/v1/risks', data),
+
+  updateRisk: (id: string, data: unknown) =>
+    apiClient.put<unknown>(`/api/v1/risks/${id}`, data),
+};
+
+// ---------------------------------------------------------------------------
+// Contracts API
+// ---------------------------------------------------------------------------
+
+export const contractsApi = {
+  getContracts: (projectId?: string, status?: string, page?: number, limit?: number) =>
+    apiClient.get<unknown[]>('/api/v1/contracts', {
+      params: { projectId, status, page, limit },
+    }),
+
+  getContract: (id: string) =>
+    apiClient.get<unknown>(`/api/v1/contracts/${id}`),
+
+  downloadContract: (id: string) =>
+    apiClient.get<unknown>(`/api/v1/contracts/${id}/download`),
+
+  getMyTeamContracts: () =>
+    apiClient.get<unknown[]>('/api/v1/contracts/my-team'),
+};
+
+// ---------------------------------------------------------------------------
+// Tasks API
+// ---------------------------------------------------------------------------
+
+export const tasksApi = {
+  getTasks: (filters?: {
+    assignedTo?: string;
+    createdBy?: string;
+    status?: string;
+    priority?: string;
+    page?: number;
+    limit?: number;
+  }) =>
+    apiClient.get<unknown[]>('/api/v1/tasks', { params: filters }),
+
+  getTask: (id: string) =>
+    apiClient.get<unknown>(`/api/v1/tasks/${id}`),
+
+  createTask: (data: unknown) =>
+    apiClient.post<unknown>('/api/v1/tasks', data),
+
+  updateTask: (id: string, data: unknown) =>
+    apiClient.patch<unknown>(`/api/v1/tasks/${id}`, data),
+
+  updateTaskStatus: (id: string, status: string) =>
+    apiClient.patch<unknown>(`/api/v1/tasks/${id}/status`, { status }),
+
+  deleteTask: (id: string) =>
+    apiClient.delete<void>(`/api/v1/tasks/${id}`),
+
+  getOverdueTasks: () =>
+    apiClient.get<unknown[]>('/api/v1/tasks/overdue'),
+};
+
+// ---------------------------------------------------------------------------
+// Budget Requests API
+// ---------------------------------------------------------------------------
+
+export const budgetRequestsApi = {
+  getBudgetRequests: (page?: number, limit?: number) =>
+    apiClient.get<unknown[]>('/api/v1/budget-requests', {
+      params: { page, limit },
+    }),
+
+  createBudgetRequest: (data: unknown) =>
+    apiClient.post<unknown>('/api/v1/budget-requests', data),
+
+  approveBudgetRequest: (id: string) =>
+    apiClient.post<void>(`/api/v1/budget-requests/${id}/approve`),
+
+  rejectBudgetRequest: (id: string, reason: string) =>
+    apiClient.post<void>(`/api/v1/budget-requests/${id}/reject`, { reason }),
+};
+
+// ---------------------------------------------------------------------------
+// Expense Reports API
+// ---------------------------------------------------------------------------
+
+export const expenseReportsApi = {
+  getExpenseReports: (page?: number, limit?: number) =>
+    apiClient.get<unknown[]>('/api/v1/expense-reports', {
+      params: { page, limit },
+    }),
+
+  createExpenseReport: (data: unknown) =>
+    apiClient.post<unknown>('/api/v1/expense-reports', data),
+
+  approveExpenseReport: (id: string) =>
+    apiClient.post<void>(`/api/v1/expense-reports/${id}/approve`),
+
+  rejectExpenseReport: (id: string, reason: string) =>
+    apiClient.post<void>(`/api/v1/expense-reports/${id}/reject`, { reason }),
+};
+

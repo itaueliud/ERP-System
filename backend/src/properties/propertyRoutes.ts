@@ -4,10 +4,8 @@ import {
   CreatePropertyInput,
   UpdatePropertyInput,
   PropertyType,
-  PropertyStatus,
   SearchPropertyFilters,
 } from './propertyService';
-import { requireRole } from '../auth/authorizationMiddleware';
 import { Role } from '../auth/authorizationService';
 import logger from '../utils/logger';
 
@@ -60,22 +58,16 @@ router.post('/', async (req: Request, res: Response) => {
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const filters = {
-      country: req.query.country as string | undefined,
-      propertyType: req.query.propertyType as PropertyType | undefined,
-      // Public listing only shows AVAILABLE unless an explicit status filter is provided
-      status: (req.query.status as PropertyStatus | undefined) || PropertyStatus.AVAILABLE,
-      priceMin: req.query.priceMin ? parseFloat(req.query.priceMin as string) : undefined,
-      priceMax: req.query.priceMax ? parseFloat(req.query.priceMax as string) : undefined,
-      sizeMin: req.query.sizeMin ? parseFloat(req.query.sizeMin as string) : undefined,
-      sizeMax: req.query.sizeMax ? parseFloat(req.query.sizeMax as string) : undefined,
-      search: req.query.search as string | undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
-      offset: req.query.offset ? parseInt(req.query.offset as string, 10) : undefined,
-    };
-
-    const result = await propertyService.listListings(filters);
-    return res.json(result);
+    const { db } = await import('../database/connection');
+    const result = await db.query(
+      `SELECT id, reference_number, title, location, country, property_type,
+              price, currency, size, view_count,
+              description, status, created_at
+       FROM property_listings
+       ORDER BY created_at DESC
+       LIMIT 100`
+    );
+    return res.json({ success: true, data: result.rows });
   } catch (error: any) {
     logger.error('Error listing property listings', { error, query: req.query });
     return res.status(500).json({ error: 'Failed to list property listings' });

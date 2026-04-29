@@ -20,7 +20,7 @@ const PORTAL_ROLES: Record<string, string[]> = {
   '/executive':  ['CFO', 'CoS', 'EA'],
   '/clevel':     ['COO', 'CTO'],
   '/operations': ['OPERATIONS_USER', 'COO'],
-  '/technology': ['TECHNOLOGY_USER', 'DEVELOPER', 'CTO'],
+  '/technology': ['TECH_STAFF', 'DEVELOPER', 'CTO'],
   '/agents':     ['AGENT'],
   '/trainers':   ['HEAD_OF_TRAINERS', 'TRAINER'],
 };

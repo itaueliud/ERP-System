@@ -63,7 +63,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', clo
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className={`relative bg-white rounded-lg shadow-xl w-full ${sizeMap[size]} max-h-[90vh] flex flex-col focus:outline-none ${className}`}
+        className={`relative bg-white rounded-lg shadow-xl w-full ${sizeMap[size]} max-h-[90vh] flex flex-col focus:outline-none mx-4 sm:mx-0 ${className}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
