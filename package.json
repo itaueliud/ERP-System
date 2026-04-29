@@ -44,6 +44,7 @@
     "npm": ">=9.0.0"
   },
   "dependencies": {
+    "@babel/runtime": "^7.28.4",
     "@aws-sdk/core": "^3.974.1",
     "@redis/client": "^5.12.1",
     "async": "^3.2.6",
