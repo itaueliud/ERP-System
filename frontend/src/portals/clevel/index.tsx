@@ -383,7 +383,7 @@ function COODashboard({ data, refetch, user, onLogout }: { data: any; refetch: (
                   {(row.status === 'PENDING' || !row.status) && (
                     <PortalButton size="sm" variant="danger" onClick={async () => {
                       if (!window.confirm('Cancel this budget request?')) return;
-                      try { const { apiClient } = await import('../../shared/api/apiClient'); await apiClient.post(`/api/v1/budget-requests/${id}/reject`, {}); refetch(['budgetRequests']); } catch { /* silent */ }
+                      try { const { apiClient } = await import('../../shared/api/apiClient'); await apiClient.post(`/api/v1/budget-requests/${_id}/reject`, {}); refetch(['budgetRequests']); } catch { /* silent */ }
                     }}>Cancel</PortalButton>
                   )}
                 </div>
