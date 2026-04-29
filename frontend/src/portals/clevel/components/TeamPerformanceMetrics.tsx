@@ -15,13 +15,13 @@ export function TeamPerformanceMetrics({ members }: Props) {
   const sorted = [...filtered].sort((a, b) => b.kpiScore - a.kpiScore);
 
   const columns: TableColumn<TeamPerformance>[] = [
-    { key: 'name', header: 'Name', render: (m) => <span className="font-medium">{m.name}</span> },
-    { key: 'role', header: 'Role', render: (m) => m.role },
-    { key: 'department', header: 'Department', render: (m) => m.department },
+    { key: 'name', header: 'Name', render: (_v, m) => <span className="font-medium">{m.name}</span> },
+    { key: 'role', header: 'Role', render: (_v, m) => m.role },
+    { key: 'department', header: 'Department', render: (_v, m) => m.department },
     {
       key: 'kpiScore',
       header: 'KPI Score',
-      render: (m) => (
+      render: (_v, m) => (
         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${m.kpiScore >= 85 ? 'bg-green-100 text-green-800' : m.kpiScore >= 70 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
           {m.kpiScore}
         </span>
@@ -30,14 +30,14 @@ export function TeamPerformanceMetrics({ members }: Props) {
     {
       key: 'tasksCompleted',
       header: 'Tasks',
-      render: (m) => (
+      render: (_v, m) => (
         <span>{m.tasksCompleted}/{m.tasksTotal}</span>
       ),
     },
     {
       key: 'attendanceRate',
       header: 'Attendance',
-      render: (m) => (
+      render: (_v, m) => (
         <div className="flex items-center gap-2">
           <div className="w-16 bg-gray-200 rounded-full h-1.5">
             <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${m.attendanceRate}%` }} />

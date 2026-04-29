@@ -8,7 +8,7 @@ export interface TableColumn<T> {
   className?: string;
 }
 
-export interface TableProps<T extends Record<string, unknown>> {
+export interface TableProps<T extends object> {
   columns: TableColumn<T>[];
   data: T[];
   rowKey: keyof T | ((row: T) => string);
@@ -20,7 +20,7 @@ export interface TableProps<T extends Record<string, unknown>> {
 
 type SortDir = 'asc' | 'desc';
 
-export function Table<T extends Record<string, unknown>>({
+export function Table<T extends object>({
   columns,
   data,
   rowKey,
@@ -36,8 +36,8 @@ export function Table<T extends Record<string, unknown>>({
   const sorted = useMemo(() => {
     if (!sortKey) return data;
     return [...data].sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
+      const av = (a as Record<string, unknown>)[sortKey];
+      const bv = (b as Record<string, unknown>)[sortKey];
       const cmp = String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true });
       return sortDir === 'asc' ? cmp : -cmp;
     });
@@ -103,7 +103,7 @@ export function Table<T extends Record<string, unknown>>({
               <tr key={getKey(row)} className="hover:bg-gray-50 transition-colors">
                 {columns.map((col) => {
                   const key = String(col.key);
-                  const value = row[key];
+                  const value = (row as Record<string, unknown>)[key];
                   return (
                     <td key={key} className={`px-4 py-3 text-gray-700 ${col.className ?? ''}`}>
                       {col.render ? col.render(value, row) : String(value ?? '')}
