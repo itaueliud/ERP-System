@@ -1,4 +1,3 @@
-import React from 'react';
 import type { AgentPerformance } from '../types';
 
 interface AgentPerformanceDashboardProps {
